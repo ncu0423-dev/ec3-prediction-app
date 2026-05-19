@@ -1,0 +1,9 @@
+{
+  "cv_r2_y": 0.4657727694360376,
+  "cv_rmse_y": 0.7928672482879717,
+  "cv_rmse_ec3": 50.170014117688616,
+  "n_train": 154,
+  "n_features": 23,
+  "target_transform": "y = log10(MolWeight / LLNA_EC3)",
+  "ad_threshold": 5.950611004797091
+}
