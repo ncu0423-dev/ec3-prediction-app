@@ -437,6 +437,9 @@ def main():
 
         "cv_fold_data":
             cv_fold_data,
+            
+        "knn_k":
+            args.knn_k,
 
         "feature_columns":
             FEATURE_COLUMNS,
