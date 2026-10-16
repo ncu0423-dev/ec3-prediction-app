@@ -1,0 +1,95 @@
+{
+  "bounded_notebook_source_comparison": {
+    "scope": "bounded_optuna_source_parity",
+    "historical_notebook_output_parity": "unavailable",
+    "production_1000_trials_verified": false,
+    "versions": {
+      "numpy": "2.5.4",
+      "pandas": "3.0.6",
+      "scipy": "1.18.1",
+      "scikit-learn": "1.8.0",
+      "xgboost": "3.2.0",
+      "optuna": "5.0.0",
+      "Boruta": "0.4.3",
+      "shap": "0.54.1",
+      "joblib": "1.6.0"
+    },
+    "check_count": 112,
+    "all_checks_passed": true,
+    "max_absolute_difference": 0
+  },
+  "canonical_model_tests": {
+    "command": "EC3_TEST_ARTIFACT=artifacts/notebook_model_artifact.joblib python -m pytest -q",
+    "passed": 65,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 16.26
+  },
+  "canonical_AD_coverage_comparison": {
+    "scope": "original_class_AD_branches_from_saved_model",
+    "status": "passed",
+    "model_sha256": "0d1dc76ecb32cb3d6b3d00974a51bcf78161d7be323917d38179e679052bb4ad",
+    "training_executed": false,
+    "check_count": 54,
+    "all_checks_passed": true,
+    "max_absolute_difference": 0.0
+  },
+  "canonical_cli": {
+    "rows": 3,
+    "target_required": false,
+    "finite_positive_predictions": true
+  },
+  "full_notebook_source_comparison": {
+    "scope": "full_notebook_source_parity",
+    "status": "passed",
+    "production_1000_trials_verified": true,
+    "historical_notebook_output_parity": "unavailable",
+    "versions": {
+      "numpy": "2.5.4",
+      "pandas": "3.0.6",
+      "scipy": "1.18.1",
+      "scikit-learn": "1.8.0",
+      "xgboost": "3.2.0",
+      "optuna": "5.0.0",
+      "Boruta": "0.4.3",
+      "shap": "0.54.1",
+      "joblib": "1.6.0"
+    },
+    "check_count": 112,
+    "all_checks_passed": true,
+    "max_absolute_difference": 0,
+    "artifact_sha256": "0d1dc76ecb32cb3d6b3d00974a51bcf78161d7be323917d38179e679052bb4ad"
+  },
+  "full_model_metrics": {
+    "oof_y": {
+      "n": 154,
+      "r2": 0.6396017076074965,
+      "rmse": 0.6512216497613663,
+      "mae": 0.4898291042884301
+    },
+    "oof_ec3": {
+      "n": 154,
+      "r2": 0.37184485003157364,
+      "rmse": 48.37381961310358,
+      "mae": 28.009199048476773
+    },
+    "external_y": {
+      "n": 72,
+      "r2": -0.11595860871554375,
+      "rmse": 1.1081921334837352,
+      "mae": 0.8979127280878509
+    },
+    "external_ec3": {
+      "n": 72,
+      "r2": -0.7115655005841133,
+      "rmse": 93.77079105814697,
+      "mae": 67.97322956032231
+    },
+    "external_inAD_ec3": {
+      "n": 55,
+      "r2": -0.6036067798243157,
+      "rmse": 89.97521533930146,
+      "mae": 65.0626031915529
+    }
+  }
+}

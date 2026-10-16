@@ -1,0 +1,21 @@
+{
+  "training": {
+    "path": "data/DASS_join_data_opera_delete_LLNAnan.csv",
+    "rows": 154,
+    "sha256": "1d28f0cf2cb4260a95b38de2cdb94feec6676b91fce8e1270376091193398b1d",
+    "status": "Existing tracked file is byte-identical to the uploaded original; unchanged."
+  },
+  "external_validation": {
+    "path": "data/newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv",
+    "rows": 74,
+    "rows_with_molecular_weight": 72,
+    "sha256": "f04eed95af213db8d4bd5c25e5e9c99f98966621b3b0bdf5ff41b9496ba17042",
+    "status": "Private local copy, ignored by Git. Never mixed into training."
+  },
+  "canonical_notebook": {
+    "path": "reference_private/★XGBoost_model_refact_tokunaga.ipynb",
+    "cells": 286,
+    "sha256": "a338be400b5e85680a78222b9ef74c03b0c1fc9eba361a6bcf83a5cf20ea0f4c",
+    "status": "Private local copy of uploaded original, ignored by Git; unchanged."
+  }
+}

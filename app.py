@@ -143,10 +143,13 @@ if uploaded is not None:
                 index=False
             )
 
-            result = predict_csv(
-                tmp.name,
-                MODEL_PATH
-            )
+            try:
+                result = predict_csv(
+                    tmp.name,
+                    MODEL_PATH
+                )
+            finally:
+                Path(tmp.name).unlink(missing_ok=True)
 
 
         # -------------------------

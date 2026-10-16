@@ -1,5 +1,13 @@
 .streamlit/secrets.toml
 
+# Private reference uploads, validation data and generated training artifacts.
+# The original training CSV already tracked in data/ is retained unchanged.
+reference_private/
+data/newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv
+artifacts/
+outputs/
+validation_runs/
+
 # Byte-compiled / optimized / DLL files
 __pycache__/
 *.py[cod]
