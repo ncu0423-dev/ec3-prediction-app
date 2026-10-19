@@ -1,0 +1,110 @@
+{
+  "workflow": "user_fixed_23_features",
+  "feature_columns": [
+    "OVERALL OH rate constant",
+    "FM advection air",
+    "VdW surface DPSA2",
+    "LUMO Energy",
+    "HOMO Energy",
+    "MolWeight",
+    "CombDipolPolariz",
+    "LogHL_pred",
+    "LogKM_pred",
+    "alert_Protein_binding_by_OASIS",
+    "potency_Protein_binding_alerts_for_skin_sensitization_according_to_GHS",
+    "DPRA.percCysdep",
+    "DPRA.percLysdep",
+    "DPRA.score",
+    "hCLAT.CD86.EC150..ug.ml.",
+    "hCLAT.CD54.EC200..ug.ml.",
+    "h.CLAT.CV75",
+    "hCLAT.MIT",
+    "hCLAT.score",
+    "KS.EC1.5",
+    "KS.EC3",
+    "KS.IC50",
+    "sum_invitro"
+  ],
+  "n_features": 23,
+  "boruta_enabled": false,
+  "outer_folds": 5,
+  "inner_folds": 5,
+  "random_state": 1037,
+  "n_trials_per_fold": [
+    1000,
+    1000,
+    1000,
+    1000,
+    1000
+  ],
+  "max_estimators": 100000,
+  "fold_workers": 4,
+  "preprocessing_features_per_fold": [
+    23,
+    23,
+    23,
+    23,
+    23
+  ],
+  "original_notebook_parity": "not_applicable_different_feature_workflow",
+  "sequential_parallel_equivalence": {
+    "adaptive_smoke_trials_per_fold": 12,
+    "all_trial_values_and_params_equal": true,
+    "oof_and_shap_exact": true,
+    "full_fold_1_trials_compared": 1000,
+    "full_fold_1_scores_and_params_exact": true
+  },
+  "model_sha256": "b1098b909b5903693583564a1dcf83e1aba68f407b22482815b70ab340ccdaef",
+  "deployment_sha256": "95a111bf95e75e4f93d107e250c61a3b4b5c06b3cd897c7251b8809ca2244635",
+  "deployment_bytes": 1289599,
+  "model_metrics": {
+    "oof_y": {
+      "n": 154,
+      "r2": 0.5923977326691866,
+      "rmse": 0.6925573830593358,
+      "mae": 0.5286485440106374
+    },
+    "oof_ec3": {
+      "n": 154,
+      "r2": 0.17651198810687507,
+      "rmse": 55.38670878102155,
+      "mae": 33.1229045010781
+    },
+    "external_y": {
+      "n": 72,
+      "r2": -0.21766476520800748,
+      "rmse": 1.1575903274439812,
+      "mae": 0.9269248730003845
+    },
+    "external_ec3": {
+      "n": 72,
+      "r2": -0.8277582784320414,
+      "rmse": 96.90143256416968,
+      "mae": 70.24577157430858
+    },
+    "external_inAD_ec3": {
+      "n": 54,
+      "r2": -0.8768569927137366,
+      "rmse": 97.3444436204225,
+      "mae": 70.84864686753573
+    }
+  },
+  "versions": {
+    "numpy": "2.5.4",
+    "pandas": "3.0.6",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0",
+    "optuna": "5.0.0",
+    "Boruta": "0.4.3",
+    "shap": "0.54.1",
+    "joblib": "1.6.0"
+  },
+  "tests": {
+    "target": "deployed_fixed23_production_model",
+    "passed": 73,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 19.61
+  }
+}

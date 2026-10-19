@@ -13,7 +13,7 @@ import pandas as pd
 MW_COL = 'MolWeight'
 TARGET_COLUMN_DEFAULT = 'LLNA_EC3'
 META_COLUMNS = ('No.', 'Name', 'CAS Number', 'SMILES', 'CAS_Number_qsar', 'SMILES_qsar')
-NOTEBOOK_SELECTED_FEATURE_COLUMNS = [
+FIXED_FEATURE_COLUMNS = [
     'OVERALL OH rate constant', 'FM advection air', 'VdW surface DPSA2',
     'LUMO Energy', 'HOMO Energy', 'MolWeight', 'CombDipolPolariz', 'LogHL_pred',
     'LogKM_pred', 'alert_Protein_binding_by_OASIS',
@@ -22,6 +22,9 @@ NOTEBOOK_SELECTED_FEATURE_COLUMNS = [
     'hCLAT.CD86.EC150..ug.ml.', 'hCLAT.CD54.EC200..ug.ml.', 'h.CLAT.CV75',
     'hCLAT.MIT', 'hCLAT.score', 'KS.EC1.5', 'KS.EC3', 'KS.IC50', 'sum_invitro',
 ]
+# Compatibility name for the former fixed-feature experiments. This list is
+# user-specified; it is not the result of the notebook's Boruta selection.
+NOTEBOOK_SELECTED_FEATURE_COLUMNS = FIXED_FEATURE_COLUMNS
 
 
 def ensure_dir(path):

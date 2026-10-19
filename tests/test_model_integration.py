@@ -21,7 +21,11 @@ def real_inputs(repo_root):
 
 def test_saved_artifact_captures_real_training_conditions(trained_artifact, repo_root):
     frame, _ = read_csv_auto(repo_root / "data" / "DASS_join_data_opera_delete_LLNAnan.csv")
-    assert trained_artifact["full_feature_columns"] == frame.columns[6:-1].tolist()
+    if trained_artifact['metadata'].get('feature_mode') == 'fixed23':
+        from utils_io import FIXED_FEATURE_COLUMNS
+        assert trained_artifact['full_feature_columns'] == FIXED_FEATURE_COLUMNS
+    else:
+        assert trained_artifact["full_feature_columns"] == frame.columns[6:-1].tolist()
     assert len(trained_artifact["folds"]) == 5
     assert trained_artifact["metadata"]["optuna_enabled"] is True
     assert trained_artifact["metadata"]["n_trials"] >= 1

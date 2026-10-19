@@ -129,6 +129,10 @@ def main():
     parser.add_argument('--max-estimators', type=int, default=200)
     parser.add_argument('--ad-coverage', type=float, default=.1)
     args = parser.parse_args()
+    if (args.use_existing_artifact or args.ad_coverage_only) and args.artifact_path.is_file():
+        from original_runtime import load_artifact
+        if load_artifact(args.artifact_path)['metadata'].get('feature_mode') == 'fixed23':
+            parser.error('指定23項目版は452項目/BorutaのNotebook再現版ではありません。比較には旧Notebook版のartifactを指定してください。')
     if args.output is None:
         args.output = ROOT/('outputs/notebook_ad_coverage_comparison.json' if args.ad_coverage_only else 'outputs/notebook_comparison.json')
     if args.n_trials < 1 or args.max_estimators < 16:

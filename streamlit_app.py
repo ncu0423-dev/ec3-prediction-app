@@ -62,6 +62,8 @@ def _missing_model() -> None:
 
 def _training_label(artifact: dict) -> str:
     mode = artifact.get("training_mode", artifact.get("metadata", {}).get("training_mode"))
+    if artifact.get('metadata', {}).get('feature_mode') == 'fixed23':
+        return '指定23項目モデル（軽量動作確認用）' if mode == 'smoke' else '指定23項目モデル'
     return {"notebook": "Notebook再現条件", "smoke": "軽量動作確認用"}.get(mode, "作成条件を要確認")
 
 
@@ -87,9 +89,12 @@ def _home(artifact: dict | None) -> None:
             st.write("入力列は学習時と同じ順序に揃えて、保存済みの前処理を適用します。")
             st.write("各Foldの予測から、Notebookに従って最小のEC3を採用します。AD内予測は、AD内と判定されたFoldだけを対象にします。")
             metadata = artifact.get("metadata", {})
-            if "notebook_reproduction_verified" in metadata:
+            if metadata.get('feature_mode') == 'fixed23':
+                st.write('指定された23項目だけで欠損補完・標準化・学習を行います。Borutaで項目を増減しません。')
+                st.caption('この23項目固定版は、452項目からBorutaで選択するNotebook再現版とは異なります。')
+            elif "notebook_reproduction_verified" in metadata:
                 st.write("現行環境での再現性チェック: " + ("検証済み（比較範囲は下記参照）" if metadata["notebook_reproduction_verified"] else "未確認"))
-            st.caption("元Notebookには比較用の学習済みモデル・保存済み予測がないため、過去の実行結果との数値一致は確認できません。")
+                st.caption("元Notebookには比較用の学習済みモデル・保存済み予測がないため、過去の実行結果との数値一致は確認できません。")
             if metadata.get("source_parity_scope"):
                 st.write("ソースコードとの比較範囲: " + str(metadata["source_parity_scope"]))
             if "knn_k" in metadata:
@@ -100,7 +105,7 @@ def _home(artifact: dict | None) -> None:
 
 
 def _input_columns(artifact: dict) -> list[str]:
-    return list(dict.fromkeys([MW_COL] + list(artifact["full_feature_columns"])))
+    return list(dict.fromkeys(list(artifact["full_feature_columns"]) + [MW_COL]))
 
 
 def _signature(frame: pd.DataFrame) -> str:
@@ -270,7 +275,10 @@ def _scatter_report(report: pd.DataFrame | None, artifact: dict, space: str) -> 
 def _evaluation(artifact: dict) -> None:
     st.subheader("モデルの性能評価")
     st.write("学習に使ったデータ上の評価、交差検証の未学習Foldに対する予測（OOF）、独立した外部データの評価を区別して表示します。")
-    st.info("Notebook再現条件では、特徴量選択をCV分割の前に全学習データへ適用します。この情報共有があるため、OOFの値だけで未知の化学物質に対する性能を判断しないでください。外部検証データは学習へ混合しません。")
+    if artifact.get('metadata', {}).get('feature_mode') == 'fixed23':
+        st.info('説明変数は指定23項目に固定し、各Foldの学習部分で欠損補完・標準化します。外部検証データは学習へ混合しません。')
+    else:
+        st.info("Notebook再現条件では、特徴量選択をCV分割の前に全学習データへ適用します。この情報共有があるため、OOFの値だけで未知の化学物質に対する性能を判断しないでください。外部検証データは学習へ混合しません。")
     metrics, reports = artifact.get("metrics", {}), artifact.get("reports", {})
     space_label = st.radio("表示する単位", ["変換目的変数 y", "LLNA EC3（%）"], horizontal=True, key="evaluation_space")
     space = "y" if space_label == "変換目的変数 y" else "ec3"

@@ -27,13 +27,15 @@ def test_export_removes_identifiers_without_mutating_source(synthetic_artifact, 
 
 
 def test_deployed_real_model_matches_canonical_predictions(repo_root):
-    canonical_path = repo_root / 'artifacts' / 'notebook_model_artifact.joblib'
+    deployed = load_artifact(repo_root / 'artifacts' / 'original_model_artifact.joblib')
+    reference_name = ('fixed23_model_artifact.joblib' if deployed['metadata'].get('feature_mode') == 'fixed23'
+                      else 'notebook_model_artifact.joblib')
+    canonical_path = repo_root / 'artifacts' / reference_name
     if not canonical_path.is_file():
         import pytest
         pytest.skip('Canonical local model is needed for export equivalence verification.')
     from utils_io import read_csv_auto
     canonical = load_artifact(canonical_path)
-    deployed = load_artifact(repo_root / 'artifacts' / 'original_model_artifact.joblib')
     frame, _ = read_csv_auto(repo_root / 'data' / 'DASS_join_data_opera_delete_LLNAnan.csv')
     inputs = frame.drop(columns='LLNA_EC3')
     pd.testing.assert_frame_equal(predict_with_artifact(canonical, inputs),
