@@ -108,9 +108,9 @@ python scripts/verify_notebook.py --n-trials 1000 --max-estimators 100000 \
   --output outputs/notebook_comparison_full.json
 ```
 
-比較対象の `artifacts/notebook_model_artifact.joblib` は生成時のまま保持しています。既定の `artifacts/original_model_artifact.joblib` は同じ学習結果に検証範囲・元ファイルSHA256などのメタデータを追記したコピーです。軽量版を試す場合は明示的に `EC3_ARTIFACT_PATH` を指定し、本番モデルを上書きしないでください。
+比較対象の `artifacts/notebook_model_artifact.joblib` は生成時のまま保持しています。既定の `artifacts/original_model_artifact.joblib` は同じ学習結果を使うCommunity Cloud配備版です。検証情報を保持し、評価表の物質名・CAS・SMILES・元行番号と、推論に不要な全体学習データを除いています。KNN補完・AD・SHAPに必要な数値参照データは残します。軽量版を試す場合は明示的に `EC3_ARTIFACT_PATH` を指定し、本番モデルを上書きしないでください。
 
-`artifacts/`・`outputs/`・`validation_runs/` はGit管理しません。生成モデルのサイズを確認し、GitHubの通常ファイル100 MiB制限を超える場合は、権利を確認した上でGit LFSやアクセス制限付きストレージを使ってください。Streamlit Community CloudではPython 3.12を選び、権利確認済みのモデルを配備して `streamlit_app.py` を入口にしてください。
+非公開リポジトリでの配備用に `artifacts/original_model_artifact.joblib` だけをGit管理します。その他の `artifacts/`・`outputs/`・`validation_runs/` と原本Notebook・外部CSVは引き続き除外します。モデルは100 MiB未満で通常のGitで扱えます。Streamlit Community CloudではPython 3.12、入口 `streamlit_app.py`、ブランチ `codex/notebook-faithful-ec3-app` を指定してください。[配備手順](docs/community_cloud.md) を参照してください。
 
 ## 構成と互換性
 

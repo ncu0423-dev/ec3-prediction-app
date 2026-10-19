@@ -77,8 +77,11 @@ def test_external_report_can_be_reproduced_from_original_csv(trained_artifact, r
     result = predict_with_artifact(trained_artifact, external["frame"])
     saved = trained_artifact["reports"]["external"]
     assert len(result) == 72
-    assert result.Name.tolist() == saved.Name.tolist()
-    np.testing.assert_array_equal(external["source_rows"], saved.source_row)
+    if trained_artifact['metadata'].get('deployment_export'):
+        assert not {'Name', 'CAS Number', 'SMILES', 'No.', 'source_row'} & set(saved)
+    else:
+        assert result.Name.tolist() == saved.Name.tolist()
+        np.testing.assert_array_equal(external["source_rows"], saved.source_row)
     for name in ["Predict_LLNA EC3", "pred_y", "kNN_AD", "any_kNN_AD", "selected_fold"]:
         pd.testing.assert_series_equal(result[name], saved[name])
     assert result.attrs["metrics"]["ec3"]["n"] == len(result)

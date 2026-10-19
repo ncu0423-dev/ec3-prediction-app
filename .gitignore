@@ -4,7 +4,9 @@
 # The original training CSV already tracked in data/ is retained unchanged.
 reference_private/
 data/newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv
-artifacts/
+artifacts/*
+# Only the reviewed Community Cloud deployment artifact is distributed.
+!artifacts/original_model_artifact.joblib
 outputs/
 validation_runs/
 
