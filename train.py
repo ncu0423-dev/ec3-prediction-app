@@ -25,6 +25,14 @@ from utils_ml import (NOTEBOOK_XGB_BASE_PARAMS, _fit_model, clone_and_transform,
                       save_shap_artifacts_for_fold, valid_regression_metrics)
 
 
+def resolve_ad_coverage(feature_mode, ad_coverage=None):
+    """Notebook final CSV branch excludes20%; archived fixed modes used10%."""
+    value = (.2 if feature_mode == 'boruta' else .1) if ad_coverage is None else ad_coverage
+    if not 0 <= value <= 1:
+        raise ValueError('AD coverageは0から1の範囲です（AD外割合）。')
+    return value
+
+
 def _fit_fold(X, y, mw, reconverted, labels, mask, selected_features, number, train_indices,
               test_indices, n_trials, max_estimators, knn_k, ad_coverage, mode):
     name = f'fold_{number}'
@@ -58,13 +66,14 @@ def _fit_fold(X, y, mw, reconverted, labels, mask, selected_features, number, tr
 
 def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=None,
                 mode='notebook', n_trials=None, max_estimators=None,
-                boruta_n_jobs=2, ad_coverage=.1, knn_k=5, feature_mode='boruta', fold_workers=1):
+                boruta_n_jobs=2, ad_coverage=None, knn_k=5, feature_mode='boruta', fold_workers=1):
     if mode not in ('notebook','smoke'):
         raise ValueError('modeはnotebookまたはsmokeです。')
     if not 1 <= fold_workers <= 4:
         raise ValueError('fold_workersは1から4です。')
     if feature_mode not in ('boruta', 'fixed21', 'fixed23'):
         raise ValueError('feature_modeはboruta、fixed21、fixed23です。')
+    ad_coverage = resolve_ad_coverage(feature_mode, ad_coverage)
     n_trials = (1000 if mode == 'notebook' else 2) if n_trials is None else n_trials
     max_estimators = (100000 if mode == 'notebook' else 200) if max_estimators is None else max_estimators
     if n_trials < 1 or max_estimators < 1:
@@ -123,6 +132,7 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
     metadata = {
         'training_mode': mode, 'created_at': datetime.now(timezone.utc).isoformat(),
         'feature_mode': feature_mode, 'fold_workers': fold_workers,
+        'invitro_ad_available': False,
         'random_state': 1037, 'cv_folds': 5, 'inner_folds': 5, 'inner_random_state': 0,
         'n_trials': n_trials, 'max_estimators': max_estimators,
         'optuna_enabled': True, 'optuna_sampler': 'TPESampler(seed=0)',
@@ -221,17 +231,17 @@ def main():
     p.add_argument('--artifact-path')
     p.add_argument('--output-dir')
     p.add_argument('--mode', choices=('notebook','smoke'), default='notebook')
-    p.add_argument('--feature-mode', choices=('boruta','fixed21','fixed23'), default='fixed21')
+    p.add_argument('--feature-mode', choices=('boruta','fixed21','fixed23'), default='boruta')
     p.add_argument('--n-trials', type=int)
     p.add_argument('--max-estimators', type=int)
-    p.add_argument('--ad-coverage', type=float, default=.1)
+    p.add_argument('--ad-coverage', type=float, default=None, help='AD外割合。Notebook最終出力は0.2（初期0.0/別枝0.1も指定可能）')
     p.add_argument('--knn-k', type=int, default=5)
     p.add_argument('--fold-workers', type=int, default=1, help='Independent outer folds, 1-4 processes')
     p.add_argument('--boruta-n-jobs', type=int, default=2)
     args = p.parse_args()
     train_model(args.train_csv, args.exval_csv, artifact_path=args.artifact_path,
                 output_dir=args.output_dir, mode=args.mode, n_trials=args.n_trials,
-                max_estimators=args.max_estimators, ad_coverage=args.ad_coverage,
+                max_estimators=args.max_estimators, ad_coverage=resolve_ad_coverage(args.feature_mode, args.ad_coverage),
                 knn_k=args.knn_k, boruta_n_jobs=args.boruta_n_jobs, feature_mode=args.feature_mode, fold_workers=args.fold_workers)
 
 

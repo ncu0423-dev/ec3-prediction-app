@@ -68,6 +68,24 @@ def _training_label(artifact: dict) -> str:
     return {"notebook": "Notebook再現条件", "smoke": "軽量動作確認用"}.get(mode, "作成条件を要確認")
 
 
+def _is_notebook_workflow(artifact: dict) -> bool:
+    return artifact.get("metadata", {}).get("feature_mode", "boruta") not in FIXED_FEATURE_SETS
+
+
+def _selected_features(artifact: dict) -> list[str]:
+    return list(artifact["selected_feature_columns"])
+
+
+def _notebook_shap_importance(values) -> np.ndarray:
+    # Literal notebook operation: sum rows first (preserve dtype/order), then abs.
+    return abs(sum(np.asarray(values)))
+
+
+def _invitro_ad_note(artifact: dict) -> None:
+    if _is_notebook_workflow(artifact) and not artifact.get("metadata", {}).get("invitro_ad_available", False):
+        st.info("hCLAT.Callの元資料が未提供のため、in vitro試験のcallと組み合わせた追加ADは未計算です。kNNによるADは計算できます。hCLAT.scoreから推測した判定は使いません。")
+
+
 def _home(artifact: dict | None) -> None:
     st.subheader("化学物質のデータから、皮膚感作性を調べる")
     st.write("in vitro試験や物性値を入力すると、XGBoostモデルがLLNA EC3を予測します。予測値と適用範囲（AD）を確認し、SHAPで各特徴量の寄与を調べられます。")
@@ -87,6 +105,7 @@ def _home(artifact: dict | None) -> None:
         with st.expander("使用するモデルの情報"):
             st.write("作成条件: " + _training_label(artifact))
             st.write(f"入力特徴量: {len(artifact['full_feature_columns'])}列 / Fold: {len(_folds(artifact))}")
+            st.write(f"モデルに使う選択特徴量: {len(_selected_features(artifact))}項目")
             st.write("入力列は学習時と同じ順序に揃えて、保存済みの前処理を適用します。")
             st.write("各Foldの予測から、Notebookに従って最小のEC3を採用します。AD内予測は、AD内と判定されたFoldだけを対象にします。")
             metadata = artifact.get("metadata", {})
@@ -95,7 +114,13 @@ def _home(artifact: dict | None) -> None:
                 st.caption('この固定項目版は、452項目からBorutaで選択するNotebook再現版とは異なります。')
                 if MW_COL not in artifact['full_feature_columns']:
                     st.write('MolWeightはEC3への換算専用の別入力です。説明変数・補完距離・AD・SHAPには使いません。')
-            elif "notebook_reproduction_verified" in metadata:
+            else:
+                st.write(f"前処理にはMolWeightを含む全{len(artifact['full_feature_columns'])}項目を使います。KNNImputerで補完し、StandardScalerで標準化してから、Borutaで選ばれた{len(_selected_features(artifact))}項目をモデルへ渡します。")
+                st.write("Boruta選択用の基準は全学習データで作成し、その後の各Foldの前処理はそのFoldの学習行だけでfitします。外部検証・新規入力には保存した各Foldの前処理を適用し、再fitしません。")
+                st.caption("選択されなかった入力列もKNNの近傍距離に使います。選択後の項目だけを渡して、残りの列を省略することはできません。")
+                st.write("Borutaで選択された特徴量（元データの列順）")
+                st.dataframe(pd.DataFrame({"特徴量": _selected_features(artifact)}), hide_index=True, width="stretch")
+            if _is_notebook_workflow(artifact) and "notebook_reproduction_verified" in metadata:
                 st.write("現行環境での再現性チェック: " + ("検証済み（比較範囲は下記参照）" if metadata["notebook_reproduction_verified"] else "未確認"))
                 st.caption("元Notebookには比較用の学習済みモデル・保存済み予測がないため、過去の実行結果との数値一致は確認できません。")
             if metadata.get("source_parity_scope"):
@@ -105,6 +130,7 @@ def _home(artifact: dict | None) -> None:
             versions = artifact.get("versions", artifact.get("metadata", {}).get("versions", artifact.get("library_versions")))
             if versions:
                 st.json(versions)
+        _invitro_ad_note(artifact)
 
 
 def _input_columns(artifact: dict) -> list[str]:
@@ -136,8 +162,12 @@ def _render_prediction(frame: pd.DataFrame) -> None:
     left, right = st.columns(2)
     left.metric("予測LLNA EC3（%）", f"{float(row['Predict_LLNA EC3']):.6g}")
     left.caption(f"採用Fold: {row.get('selected_fold', '記録なし')}")
-    inside = row.get("kNN_AD", None)
-    right.metric("採用Foldの適用範囲（AD）", ("範囲内" if bool(inside) else "範囲外") if pd.notna(inside) else "判定なし")
+    inside = row.get("any_kNN_AD", row.get("kNN_AD", None))
+    right.metric("全Foldの適用範囲（kNN AD）", ("範囲内" if bool(inside) else "範囲外") if pd.notna(inside) else "判定なし")
+    right.caption("Notebookの判定: 1つ以上のFoldがAD内なら範囲内。")
+    chosen_inside = row.get("kNN_AD", None)
+    if pd.notna(chosen_inside):
+        right.caption("最小EC3を採用したFold単独のAD: " + ("範囲内" if bool(chosen_inside) else "範囲外"))
     if "any_kNN_AD" in row and not bool(row["any_kNN_AD"]):
         st.warning("すべてのFoldで適用範囲外です。類似する学習データが少ない可能性があるため、予測値の解釈に注意してください。")
     inad = row.get("knn_inAD_Predict_LLNA EC3", np.nan)
@@ -151,10 +181,13 @@ def _single(artifact: dict) -> None:
     st.subheader("単一化学物質の予測")
     st.write("分子量と特徴量を入力してください。特徴量の値は空欄にできます。空欄は欠損値として、学習済みの補完処理へ渡します。")
     name = st.text_input("化学物質名（任意）", key="single_name")
-    mw = st.number_input("MolWeight（分子量・EC3換算用）", value=180.16, min_value=0.0, format="%.6f", key="single_mw")
+    mw_label = "MolWeight（分子量・説明変数およびEC3換算用）" if MW_COL in artifact['full_feature_columns'] else "MolWeight（分子量・EC3換算用）"
+    mw = st.number_input(mw_label, value=180.16, min_value=0.0, format="%.6f", key="single_mw")
     features = [col for col in artifact["full_feature_columns"] if col != MW_COL]
     selected = set(artifact.get("selected_feature_columns", []))
     st.caption("下の「値」セルを選択すると数値を入力できます。特徴量名は学習時の名称です。表示順序はモデルの入力順序に対応します。")
+    if _is_notebook_workflow(artifact):
+        st.info(f"原本と同じ前処理には全{len(artifact['full_feature_columns'])}項目を使います。選択後の{len(_selected_features(artifact))}項目だけを入力し、残りを空欄にした場合は、全項目が既知のCSVと補完結果が異なることがあります。できるだけ全項目が入ったCSVを使ってください。")
     initial = pd.DataFrame({"特徴量": features, "値": pd.Series(np.nan, index=range(len(features))), "モデル選択": ["選択" if col in selected else "補完に使用" for col in features]})
     edited = st.data_editor(initial, key="single_feature_values", disabled=["特徴量", "モデル選択"], hide_index=True, num_rows="fixed", height=480, width="stretch", column_config={"値": st.column_config.NumberColumn("値", format="%.8g")})
     st.caption("モデルに選択されていない特徴量も、KNNによる欠損補完の距離計算に使われます。既知の値をできるだけ入力してください。")
@@ -189,10 +222,12 @@ def _batch(artifact: dict) -> None:
     columns = _input_columns(artifact)
     st.download_button("入力テンプレートCSVをダウンロード", dataframe_to_csv_bytes(pd.DataFrame(columns=columns)), "ec3_input_template.csv", "text/csv", key="input_template")
     input_description = (f"説明変数{len(artifact['full_feature_columns'])}列＋換算専用MolWeight 1列（合計{len(columns)}列）"
-                         if MW_COL not in artifact['full_feature_columns'] else f"{len(columns)}列")
+                         if MW_COL not in artifact['full_feature_columns'] else f"前処理用の全{len(columns)}列（MolWeightを含む）")
     st.caption(input_description + '。MolWeightは正の数を入力します。説明変数の欠損セルは学習済みKNNImputerで補完します。実測EC3の列は不要です。')
     with st.expander("CSVの形式と欠損値について"):
         st.write("1行につき1物質です。列名はテンプレートと完全に一致させてください。列の並び替えは可能です。すべての特徴量列が必要ですが、欠損セルは空欄にできます。MolWeightの欠損・0以下・無限大は使用できません。")
+        if _is_notebook_workflow(artifact):
+            st.write(f"Borutaで選択された{len(_selected_features(artifact))}項目だけのCSVは入力できません。残りを空欄の列として追加しても、元の全項目が既知の外部データと同じ変換値にはなりません。補完距離に使うため、全{len(artifact['full_feature_columns'])}項目のうち既知の値をすべて含めてください。")
         st.write("UTF-8 / CP932 / Shift-JIS、最大20 MB・10,000行。実測EC3は予測入力に使いません。アップロードしたデータと結果はセッションのメモリで扱います。")
     uploaded = st.file_uploader("予測用CSV", type=["csv"], key="batch_csv")
     if uploaded is None:
@@ -232,7 +267,8 @@ def _show_metrics(metrics: dict | None) -> None:
         return
     for column, name in zip(st.columns(3), ("r2", "rmse", "mae")):
         value = next((metrics[key] for key in (name, name.upper(), "R²" if name == "r2" else name) if key in metrics), None)
-        column.metric("R²" if name == "r2" else name.upper(), f"{float(value):.5g}" if value is not None and np.isfinite(float(value)) else "算出不可")
+        label = "R²" if name == "r2" else "MAE（追加指標）" if name == "mae" else "RMSE"
+        column.metric(label, f"{float(value):.5g}" if value is not None and np.isfinite(float(value)) else "算出不可")
     if "n" in metrics:
         st.caption(f"評価データ数: {metrics['n']}")
 
@@ -279,13 +315,45 @@ def _scatter_report(report: pd.DataFrame | None, artifact: dict, space: str) -> 
         st.dataframe(report, hide_index=True, width="stretch")
 
 
+def _notebook_evaluation_tables(report: pd.DataFrame | None, *, prediction_column="Predict_LLNA EC3") -> None:
+    if not isinstance(report, pd.DataFrame) or report.empty:
+        return
+    truth_column = "LLNA EC3(NS converted to 150%)"
+    if truth_column not in report or prediction_column not in report:
+        return
+    from notebook_metrics import evaluate_notebook_report
+    values = evaluate_notebook_report(report, prediction_column=prediction_column, truth_column=truth_column)
+    with st.expander("Notebookの分類・5倍範囲評価（EC3単位）"):
+        st.caption("GHS: EC3≤2は1A、2<EC3≤100は1B、100超はNC。ECETOCは0.1 / 1 / 10 / 100を境界に原本の不等号で分類します。")
+        st.markdown("**実測値の1/5倍より大きく、5倍より小さい予測の割合**")
+        st.caption("境界のちょうど1/5倍・5倍は範囲内に含めません。overはEC3を低く予測する強めの予測、underはEC3を高く予測する弱めの予測です。")
+        st.dataframe(values["range_rates"], width="stretch")
+        for name, title in (("ghs", "GHS"), ("ecetoc", "ECETOC")):
+            classification = values[name]
+            st.markdown(f"**{title}分類のクロス表**")
+            st.caption("行が予測、列が実測です。")
+            st.dataframe(classification["matrix"], width="stretch")
+            accuracy = classification['accuracy']
+            accuracy_text = f"{accuracy:.3%}" if accuracy is not None else "算出不可"
+            under = classification['underestimated']
+            over = classification['overestimated']
+            under_text = f"{under:.3%}" if under is not None else "算出不可"
+            over_text = f"{over:.3%}" if over is not None else "算出不可"
+            st.write(f"一致率: {accuracy_text} / 感作性の過小評価率: {under_text} / 感作性の過大評価率: {over_text} / 評価件数: {classification['n']}")
+            st.caption("過小評価は実測より弱い感作性の区分、過大評価は実測より強い感作性の区分を予測した割合です。")
+        if values.get("excluded_count", 0):
+            st.caption(f"欠損・非有限等により評価から除外: {values['excluded_count']}件")
+
+
 def _evaluation(artifact: dict) -> None:
     st.subheader("モデルの性能評価")
     st.write("学習に使ったデータ上の評価、交差検証の未学習Foldに対する予測（OOF）、独立した外部データの評価を区別して表示します。")
     if artifact.get('metadata', {}).get('feature_mode') in FIXED_FEATURE_SETS:
         st.info(f"説明変数は指定{len(artifact['full_feature_columns'])}項目に固定し、各Foldの学習部分で欠損補完・標準化します。外部検証データは学習へ混合しません。")
     else:
-        st.info("Notebook再現条件では、特徴量選択をCV分割の前に全学習データへ適用します。この情報共有があるため、OOFの値だけで未知の化学物質に対する性能を判断しないでください。外部検証データは学習へ混合しません。")
+        st.info("Notebook再現条件では、特徴量選択をCV分割の前に全学習データへ適用します。また、内側CV前に外側学習データで補完・標準化します。この情報共有を保持しているため、OOFや内側CVの値だけで未知物質の性能を判断しないでください。外部検証データは学習へ混合しません。")
+        st.caption(f"kNN ADは選択・標準化後の空間で計算します。近傍数k={artifact['metadata'].get('knn_k', '不明')}、coverage={artifact['metadata'].get('ad_coverage', '不明')}は学習距離分布から除く割合です。")
+        _invitro_ad_note(artifact)
     metrics, reports = artifact.get("metrics", {}), artifact.get("reports", {})
     space_label = st.radio("表示する単位", ["変換目的変数 y", "LLNA EC3（%）"], horizontal=True, key="evaluation_space")
     space = "y" if space_label == "変換目的変数 y" else "ec3"
@@ -295,6 +363,7 @@ def _evaluation(artifact: dict) -> None:
         st.write("各行が属するテストFoldの予測を使用します。学習に使った行への当てはめとは区別します。")
         _show_metrics(metrics.get(f"oof_{space}"))
         _scatter_report(reports.get("oof"), artifact, space)
+        _notebook_evaluation_tables(reports.get("oof"))
     with train:
         st.write("各Foldの学習部分への当てはめです。学習済みデータへの結果のため、未知データへの性能より良く見える可能性があります。")
         rows = metrics.get("train_folds", metrics.get("folds", []))
@@ -311,12 +380,28 @@ def _evaluation(artifact: dict) -> None:
         else:
             st.info("Foldごとの学習指標は保存されていません。")
     with external:
-        st.write("学習に混合していない外部検証用CSVに対する結果です。最終予測は各Foldから得た最小EC3に対応します。")
-        _show_metrics(metrics.get(f"external_{space}"))
-        _scatter_report(reports.get("external"), artifact, space)
+        st.write("学習に混合していない外部検証用CSVに対する結果です。標準の最終予測は各Foldから得た最小EC3に対応します。平均はNotebook内で比較した別の集約です。")
+        external_report = reports.get("external")
+        alternatives = ["最小EC3（標準）"]
+        if isinstance(external_report, pd.DataFrame) and {"pred_y_mean", "Predict_LLNA EC3_mean"}.issubset(external_report.columns):
+            alternatives.append("平均（Notebookの比較用）")
+        method = st.selectbox("外部予測の集約", alternatives, key="external_prediction_method")
+        mean_method = method == "平均（Notebookの比較用）"
+        key = f"external_mean_{space}" if mean_method else f"external_{space}"
+        _show_metrics(metrics.get(key))
+        display_report = external_report
+        if mean_method:
+            columns = ["true_y", "LLNA EC3(NS converted to 150%)", "pred_y_mean", "Predict_LLNA EC3_mean"]
+            display_report = external_report[[col for col in columns if col in external_report]].rename(
+                columns={"pred_y_mean": "pred_y", "Predict_LLNA EC3_mean": "Predict_LLNA EC3"})
+            st.caption("yの平均と、各Foldで逆変換したEC3の平均をそれぞれ計算します。平均yを逆変換した値と、EC3の平均は同じではありません。")
+        _scatter_report(display_report, artifact, space)
+        _notebook_evaluation_tables(display_report)
         if metrics.get(f"external_inAD_{space}"):
-            st.markdown("**AD内Foldだけの予測による外部評価**")
+            st.markdown("**AD内Foldだけから最小EC3を採用した外部評価**")
             _show_metrics(metrics[f"external_inAD_{space}"])
+            if isinstance(external_report, pd.DataFrame):
+                _notebook_evaluation_tables(external_report, prediction_column="knn_inAD_Predict_LLNA EC3")
 
 
 def _training_explanation(fold: dict):
@@ -325,16 +410,29 @@ def _training_explanation(fold: dict):
     data = fold.get("X_shap", fold.get("X_train_selected"))
     if data is None:
         raise ValueError("SHAP用の参照データが保存されていません。予測を行ってから、直前の入力データを選んでください。")
-    data = np.asarray(data, dtype=float)[:100]
+    data = np.asarray(data, dtype=float)
     if not names:
         names = [f"feature_{i}" for i in range(data.shape[1])]
     if "shap_values" in fold and "shap_base_values" in fold:
-        values = np.asarray(fold["shap_values"], dtype=float)[:len(data)]
-        base = np.asarray(fold["shap_base_values"], dtype=float)
+        values = np.asarray(fold["shap_values"])[:len(data)]
+        base = np.asarray(fold["shap_base_values"])
         if base.ndim:
             base = base[:len(data)]
         return shap.Explanation(values=values, base_values=base, data=data, feature_names=names)
     return shap.TreeExplainer(fold["model"])(pd.DataFrame(data, columns=names))
+
+
+def _crossfold_notebook_importance(artifact: dict) -> pd.DataFrame:
+    names = _selected_features(artifact)
+    columns = {}
+    for fold in _folds(artifact):
+        if list(fold["selected_feature_columns"]) != names:
+            raise ValueError("特徴量が異なるFoldを同一の重要度表に平均できません。")
+        explanation = _training_explanation(fold)
+        columns[fold["fold_name"]] = _notebook_shap_importance(explanation.values)
+    table = pd.DataFrame(columns, index=pd.Index(names, name="特徴量"))
+    table["Fold平均"] = table.mean(axis=1)
+    return table.sort_values("Fold平均", ascending=False).reset_index()
 
 
 def _shap(artifact: dict) -> None:
@@ -345,12 +443,12 @@ def _shap(artifact: dict) -> None:
     names = [fold["fold_name"] for fold in folds]
     name = st.selectbox("説明するFold", names, key="shap_fold")
     fold = folds[names.index(name)]
-    sources = ["学習データの参照サンプル"]
+    sources = ["Fold学習データ（全行）"]
     if "latest_prediction_input" in st.session_state:
         sources.append("直前に予測した入力データ")
     source = st.selectbox("説明するデータ", sources, key="shap_source")
     st.info("SHAPの出力単位は y = log10(MolWeight / EC3) です。正の寄与はyを増やし、同じ分子量ではEC3を小さくする方向です。EC3（%）への直接の加算値ではありません。")
-    st.caption(f"選択モデル: {name}。図の特徴量値は、このFoldの前処理を適用したモデル入力値です。全体図は最大100行を用います。")
+    st.caption(f"選択モデル: {name}。図の特徴量値は、このFoldの前処理を適用したモデル入力値です。選択データの全行・全選択特徴量を使います。原本のSummaryはFold学習データが対象です。")
     signature = (str(ARTIFACT_PATH), str(ARTIFACT_PATH.stat().st_mtime_ns), name, source)
     if source == "直前に予測した入力データ":
         signature += (hashlib.sha256(pd.util.hash_pandas_object(st.session_state["latest_prediction_input"], index=True).values.tobytes()).hexdigest(),)
@@ -358,7 +456,7 @@ def _shap(artifact: dict) -> None:
         try:
             with st.spinner("特徴量の寄与を計算しています…"):
                 if source == "直前に予測した入力データ":
-                    explanation = explain_prediction(artifact, st.session_state["latest_prediction_input"].iloc[:100], fold_name=name)
+                    explanation = explain_prediction(artifact, st.session_state["latest_prediction_input"], fold_name=name)
                 else:
                     explanation = _training_explanation(fold)
             st.session_state["shap_result"] = (signature, explanation)
@@ -373,29 +471,38 @@ def _shap(artifact: dict) -> None:
     st.success(f"{name} の {n_rows}行を説明しています。最終的な複数Foldの集約値そのものへの説明ではありません。")
     importance, summary, beeswarm, waterfall = st.tabs(["特徴量重要度", "SHAP Summary", "SHAP Beeswarm", "個別の寄与"])
     with importance:
-        st.caption("平均絶対SHAP値。値が大きいほど、このデータでの予測への寄与が大きい特徴量です。")
-        shap.plots.bar(explanation, max_display=20, show=False)
-        fig = plt.gcf()
+        st.caption("原Notebookの集計式 abs(sum(SHAP値)): 行方向に符号付きで合計してから絶対値を取ります。平均絶対SHAP値とは異なり、正負の寄与は打ち消し合います。")
+        values = _notebook_shap_importance(explanation.values)
+        order = np.argsort(values)
+        feature_names = np.asarray(explanation.feature_names)
+        fig, axis = plt.subplots(figsize=(9, max(4.5, len(values) * .27)))
+        axis.barh(feature_names[order], values[order], color="#197e90")
+        axis.set_xlabel("abs(sum(SHAP values))")
+        fig.tight_layout()
         st.pyplot(fig)
         plt.close(fig)
+        if _is_notebook_workflow(artifact):
+            with st.expander("全Foldの原Notebook集計表"):
+                st.caption("各Foldの学習行全体でabs(sum(SHAP値))を計算し、その数値をFold間で平均します。元コードの文字列の特徴名列を平均へ含める処理は除外します。生のSHAP値をFold間で平均する処理ではありません。")
+                st.dataframe(_crossfold_notebook_importance(artifact), hide_index=True, width="stretch")
     with summary:
         if n_rows < 2:
-            st.info("Violin Plotで分布を表示するには2行以上が必要です。学習データの参照サンプルか、複数行を予測した入力データを選んでください。単一物質の寄与は「個別の寄与」で確認できます。")
+            st.info("Violin Plotで分布を表示するには2行以上が必要です。Fold学習データか、複数行を予測した入力データを選んでください。単一物質の寄与は「個別の寄与」で確認できます。")
         else:
-            shap.summary_plot(explanation.values, features=explanation.data, feature_names=explanation.feature_names, plot_type="violin", max_display=20, show=False)
+            shap.summary_plot(explanation.values, features=explanation.data, feature_names=explanation.feature_names, plot_type="violin", max_display=len(explanation.feature_names), show=False)
             fig = plt.gcf()
             st.pyplot(fig)
             plt.close(fig)
             st.caption("各特徴量のSHAP値の分布をViolin Plotで表示します。横軸はyへの寄与、色は前処理後の特徴量値です。")
     with beeswarm:
-        shap.plots.beeswarm(explanation, max_display=20, show=False)
+        shap.plots.beeswarm(explanation, max_display=len(explanation.feature_names), show=False)
         fig = plt.gcf()
         st.pyplot(fig)
         plt.close(fig)
-        st.caption("各点が1行の寄与です。横軸はyへの寄与、色は前処理後の特徴量値です。")
+        st.caption("追加表示のBeeswarmです。各点が1行の寄与、横軸はyへの寄与、色は前処理後の特徴量値です。原本のSummaryは隣のViolin Plotです。")
     with waterfall:
         row = st.number_input("個別に説明する行（1から）", min_value=1, max_value=max(n_rows, 1), value=1, step=1, key="shap_row")
-        shap.plots.waterfall(explanation[int(row) - 1], max_display=20, show=False)
+        shap.plots.waterfall(explanation[int(row) - 1], max_display=len(explanation.feature_names), show=False)
         fig = plt.gcf()
         st.pyplot(fig)
         plt.close(fig)
@@ -419,7 +526,7 @@ def main() -> None:
         if artifact is not None:
             st.caption("使用するモデル")
             st.write(_training_label(artifact))
-            st.caption(f"{len(_folds(artifact))} Fold / {len(artifact['full_feature_columns'])}入力特徴量")
+            st.caption(f"{len(_folds(artifact))} Fold / 前処理{len(artifact['full_feature_columns'])}項目 → モデル{len(_selected_features(artifact))}項目")
         else:
             st.caption("モデル未準備")
     if artifact is not None:

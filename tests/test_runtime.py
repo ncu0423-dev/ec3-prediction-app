@@ -32,6 +32,17 @@ def test_minimum_ec3_uses_y_from_same_fold(synthetic_artifact, synthetic_input):
     assert np.all(result.pred_y != result.pred_y_mean)
 
 
+def test_float32_inverse_rounding_tie_retains_notebook_maximum_y():
+    from original_runtime import _select_min_ec3_fold
+    predictions = pd.DataFrame(np.array([[0., 1e-8]], dtype=np.float32), columns=['fold_1', 'fold_2'])
+    ec3 = pd.DataFrame(100. / (10 ** predictions.to_numpy()), columns=predictions.columns)
+    assert ec3.iloc[0, 0] == ec3.iloc[0, 1]
+    chosen = _select_min_ec3_fold(predictions, ec3)
+    assert chosen.loc[0, 'selected_fold'] == 'fold_2'
+    assert chosen.loc[0, 'pred_y'] == predictions.max(axis=1).iloc[0]
+    assert chosen.loc[0, 'pred_ec3'] == ec3.min(axis=1).iloc[0]
+
+
 def test_ad_candidate_selection_and_no_eligible_folds(synthetic_artifact, synthetic_input):
     result = predict_with_artifact(synthetic_artifact, synthetic_input)
     assert result.kNN_AD.tolist() == [False] * 3

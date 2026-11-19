@@ -127,7 +127,7 @@ def main():
     parser.add_argument('--output', type=Path)
     parser.add_argument('--n-trials', type=int, default=2)
     parser.add_argument('--max-estimators', type=int, default=200)
-    parser.add_argument('--ad-coverage', type=float, default=.1)
+    parser.add_argument('--ad-coverage', type=float, default=.2)
     args = parser.parse_args()
     if (args.use_existing_artifact or args.ad_coverage_only) and args.artifact_path.is_file():
         from original_runtime import load_artifact

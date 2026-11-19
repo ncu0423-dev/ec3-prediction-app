@@ -1,0 +1,109 @@
+{
+  "workflow": "original_notebook_prediction_restored",
+  "full_preprocessing_columns": 452,
+  "selected_feature_columns": [
+    "OVERALL OH rate constant",
+    "FM advection sediment",
+    "LUMO Energy",
+    "HOMO Energy",
+    "CombDipolPolariz",
+    "LogHL_pred",
+    "LogKM_pred",
+    "alert_Protein_binding_by_OASIS",
+    "judge_Protein_binding_alerts_for_skin_sensitization_according_to_GHS",
+    "potency_Protein_binding_alerts_for_skin_sensitization_according_to_GHS",
+    "DPRA.percCysdep",
+    "DPRA.percLysdep",
+    "DPRA.score",
+    "hCLAT.CD86.EC150..ug.ml.",
+    "h.CLAT.CV75",
+    "hCLAT.MIT",
+    "hCLAT.score",
+    "KS.EC1.5",
+    "KS.EC3",
+    "KS.IC50",
+    "sum_invitro"
+  ],
+  "selected_count": 21,
+  "ad_coverage": 0.2,
+  "ad_branch": "last_CSV_265_270",
+  "weights_reused_without_retraining": true,
+  "full_cost_trials_per_fold": [
+    1000,
+    1000,
+    1000,
+    1000,
+    1000
+  ],
+  "canonical_sha256": "0d1dc76ecb32cb3d6b3d00974a51bcf78161d7be323917d38179e679052bb4ad",
+  "restored_source_sha256": "10893a1bcdaffcf402bdc0662e1761caf8603e8ae6e357578aa0450c7f67e56c",
+  "deployment_sha256": "d55336abfc15e963156cb4cee5a2dca40e53e383cf03ffb6eac53841d640bf30",
+  "deployment_bytes": 1468602,
+  "versions": {
+    "numpy": "2.5.4",
+    "pandas": "3.0.6",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0",
+    "optuna": "5.0.0",
+    "Boruta": "0.4.3",
+    "shap": "0.54.1",
+    "joblib": "1.6.0"
+  },
+  "full_original_source_parity": {
+    "scope": "previous_full_1000_trials_current_pinned_environment",
+    "checks": 112,
+    "max_abs_diff": 0
+  },
+  "invitro_ad_available": false,
+  "all_notebook_specs_complete": false,
+  "missing_sources": [
+    "Annex-2-in-vitro-in-silico-in-vivo-defined-approaches.csv",
+    "newCE_data.csv"
+  ],
+  "model_metrics": {
+    "oof_ec3": {
+      "n": 154,
+      "r2": 0.37184485003157364,
+      "rmse": 48.37381961310358,
+      "mae": 28.009199048476773
+    },
+    "oof_inAD_ec3": {
+      "n": 123,
+      "r2": 0.3485711023007094,
+      "rmse": 50.73402807085301,
+      "mae": 31.275083150830532
+    },
+    "external_ec3": {
+      "n": 72,
+      "r2": -0.7115655005841133,
+      "rmse": 93.77079105814697,
+      "mae": 67.97322956032231
+    },
+    "external_inAD_ec3": {
+      "n": 45,
+      "r2": -0.7427410753489354,
+      "rmse": 92.86637247040304,
+      "mae": 69.32332262502295
+    }
+  },
+  "current_code_source_parity": {
+    "scope": "bounded_optuna_source_parity",
+    "checks": 166,
+    "status": "passed",
+    "max_abs_diff": 0
+  },
+  "AD_source_parity": {
+    "scope": "original_class_AD_branches_from_saved_model",
+    "checks": 54,
+    "status": "passed",
+    "max_abs_diff": 0.0
+  },
+  "tests": {
+    "target": "deployed_notebook_restored_model",
+    "passed": 110,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 29.05
+  }
+}

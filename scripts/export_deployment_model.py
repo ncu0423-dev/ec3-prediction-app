@@ -25,6 +25,7 @@ REPORT_COLUMNS = (
     'pred_y', 'Predict_LLNA EC3', 'kNN_AD', 'any_kNN_AD',
     'selected_inAD_fold', 'knn_inAD_pred_y', 'knn_inAD_Predict_LLNA EC3',
     'knn_distance', 'Fold_misprediction',
+    'knn_inAD_Fold_misprediction', 'pred_y_mean', 'Predict_LLNA EC3_mean',
 )
 
 

@@ -61,7 +61,11 @@ def _select_min_ec3_fold(pred_y_fold, pred_ec3_fold, *, eligibility=None):
     valid = np.isfinite(y) & np.isfinite(ec3) & (ec3 > 0)
     if eligibility is not None:
         valid &= eligibility.to_numpy(dtype=bool)
-    indices = np.argmin(np.where(valid, ec3, np.inf), axis=1)
+    minimum = np.min(np.where(valid, ec3, np.inf), axis=1)
+    # float32 exponentiation can round different y values to the same EC3.
+    # Break such ties with max(y), matching the notebook's two aggregations.
+    tied_minimum = valid & (ec3 == minimum[:, None])
+    indices = np.argmax(np.where(tied_minimum, y, -np.inf), axis=1)
     has_candidate = valid.any(axis=1)
     rows = np.arange(len(y))
     return pd.DataFrame({
@@ -145,6 +149,7 @@ def predict_with_artifact(artifact, input_df, *, compute_ad=True):
         out['true_y'] = convert_ec3_to_y(truth, mw)
         out['LLNA EC3(NS converted to 150%)'] = convert_y_to_ec3(out['true_y'], mw)
         out['Fold_misprediction'] = out['Predict_LLNA EC3'] / out['LLNA EC3(NS converted to 150%)']
+        out['knn_inAD_Fold_misprediction'] = out['knn_inAD_Predict_LLNA EC3'] / out['LLNA EC3(NS converted to 150%)']
         out.attrs['metrics'] = {'y': valid_regression_metrics(out['true_y'],out['pred_y']),
                                 'ec3': valid_regression_metrics(truth,out['Predict_LLNA EC3'])}
     out.attrs['aggregation'] = 'minimum_predicted_ec3_per_row'
