@@ -1,8 +1,8 @@
-"""Train a fold ensemble, with notebook Boruta or the user-specified 23 features.
+"""Train a fold ensemble, with notebook Boruta or the user-specified fixed features.
 
 Notebook mode: original 5 x 1000-trial nested optimization. Smoke mode: 5 x 2
 trials, 200 rounds maximum per inner fit. Smoke artifacts are visibly distinct.
---feature-mode fixed23 uses only those 23 columns for preprocessing and fitting;
+--feature-mode fixed21 uses only those 21 columns (MW remains separate) for preprocessing and fitting;
 it does not claim original-notebook feature-selection parity.
 """
 from __future__ import annotations
@@ -17,7 +17,7 @@ import pandas as pd
 from sklearn.model_selection import StratifiedKFold
 
 from original_runtime import ARTIFACT_FORMAT_VERSION, make_prediction_template, predict_with_artifact
-from utils_io import FIXED_FEATURE_COLUMNS, META_COLUMNS, TARGET_COLUMN_DEFAULT, ensure_dir, load_dataset, save_json
+from utils_io import FIXED_FEATURE_SETS, META_COLUMNS, TARGET_COLUMN_DEFAULT, ensure_dir, load_dataset, save_json
 from utils_ml import (NOTEBOOK_XGB_BASE_PARAMS, _fit_model, clone_and_transform,
                       compute_knn_ad, convert_ec3_to_y, convert_y_to_ec3,
                       extract_invitro_calls, fit_global_boruta, fit_knn_ad,
@@ -63,8 +63,8 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
         raise ValueError('modeはnotebookまたはsmokeです。')
     if not 1 <= fold_workers <= 4:
         raise ValueError('fold_workersは1から4です。')
-    if feature_mode not in ('boruta', 'fixed23'):
-        raise ValueError('feature_modeはborutaまたはfixed23です。')
+    if feature_mode not in ('boruta', 'fixed21', 'fixed23'):
+        raise ValueError('feature_modeはboruta、fixed21、fixed23です。')
     n_trials = (1000 if mode == 'notebook' else 2) if n_trials is None else n_trials
     max_estimators = (100000 if mode == 'notebook' else 200) if max_estimators is None else max_estimators
     if n_trials < 1 or max_estimators < 1:
@@ -73,13 +73,13 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
         raise ValueError('Notebook再現モードは1000 trials / 100000 roundsです。軽量検証には--mode smokeを指定してください。')
     if not 1 <= boruta_n_jobs <= 2:
         raise ValueError('Boruta並列数は1または2に制限しています。')
-    output_dir = ensure_dir(output_dir or (f'outputs/fixed23_{mode}' if feature_mode == 'fixed23' else f'outputs/{mode}'))
-    default_artifact = (f'artifacts/fixed23_{"model" if mode == "notebook" else "smoke_model"}_artifact.joblib'
-                        if feature_mode == 'fixed23' else
+    output_dir = ensure_dir(output_dir or (f'outputs/{feature_mode}_{mode}' if feature_mode in FIXED_FEATURE_SETS else f'outputs/{mode}'))
+    default_artifact = (f'artifacts/{feature_mode}_{"model" if mode == "notebook" else "smoke_model"}_artifact.joblib'
+                        if feature_mode in FIXED_FEATURE_SETS else
                         ('artifacts/original_model_artifact.joblib' if mode=='notebook' else 'artifacts/smoke_model_artifact.joblib'))
     artifact_path = Path(artifact_path or default_artifact)
     ensure_dir(artifact_path.parent)
-    dataset = load_dataset(train_csv, feature_columns=FIXED_FEATURE_COLUMNS if feature_mode == 'fixed23' else None)
+    dataset = load_dataset(train_csv, feature_columns=FIXED_FEATURE_SETS.get(feature_mode))
     X, ec3, mw = dataset['X'], dataset['ec3'], dataset['mw']
     y = convert_ec3_to_y(ec3, mw)
     reconverted = convert_y_to_ec3(y, mw)
@@ -87,10 +87,10 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
     labels = make_llna_labels(reconverted)
     if min(np.unique(labels, return_counts=True)[1]) < 7:
         raise ValueError('5-fold外側/内側の層化分割には各クラスに十分なデータが必要です。')
-    if feature_mode == 'fixed23':
-        print(f'[{mode}/fixed23] User-specified {X.shape[1]} features; no Boruta.', flush=True)
+    if feature_mode in FIXED_FEATURE_SETS:
+        print(f'[{mode}/{feature_mode}] User-specified {X.shape[1]} features; no Boruta.', flush=True)
         selector, global_pipeline, global_X = None, None, None
-        mask = np.ones(len(FIXED_FEATURE_COLUMNS), dtype=bool)
+        mask = np.ones(X.shape[1], dtype=bool)
     else:
         print(f'[{mode}] Global Boruta: {len(X)} rows, {X.shape[1]} features', flush=True)
         selector, global_pipeline, global_X = fit_global_boruta(X, y, n_jobs=boruta_n_jobs)
@@ -130,7 +130,9 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
         'boruta': {'enabled': True, 'scope': 'all_training_before_outer_cv', 'rf_max_depth': 5,
                    'perc': 100, 'random_state': 0, 'n_estimators': 'auto',
                    'max_iter': 100, 'n_jobs': boruta_n_jobs, 'confirmed_only': True}
-                   if feature_mode == 'boruta' else {'enabled': False, 'scope': 'user_specified_fixed23'},
+                   if feature_mode == 'boruta' else {'enabled': False, 'scope': 'user_specified_' + feature_mode},
+        'mw_role': 'conversion_only' if 'MolWeight' not in X.columns else 'descriptor_and_conversion',
+        'required_input_columns': X.columns.tolist() + ([] if 'MolWeight' in X.columns else ['MolWeight']),
         'target_transform': 'log10(MolWeight / LLNA_EC3)',
         'target_inverse': 'MolWeight / (10 ** y), preserving model prediction dtype',
         'fold_aggregation': 'minimum_predicted_ec3_per_row',
@@ -150,9 +152,9 @@ def train_model(train_csv, exval_csv=None, *, artifact_path=None, output_dir=Non
         'train_source': {'sha256': dataset['sha256'], 'rows': len(X), 'encoding': dataset['encoding']},
         'input_missing_policy': 'All saved feature columns required; missing numeric cells KNN-imputed, MW positive finite.',
     }
-    if feature_mode == 'fixed23':
+    if feature_mode in FIXED_FEATURE_SETS:
         metadata['limitations'].remove('Global supervised Boruta sees outer holdouts: OOF scores contain feature-selection leakage.')
-        metadata['limitations'].append('User-specified 23-feature workflow differs from the original 452-feature Boruta workflow; historical parity does not apply.')
+        metadata['limitations'].append(f'User-specified {X.shape[1]}-feature workflow differs from the original 452-feature Boruta workflow; historical parity does not apply.')
     identity = dataset['frame'][[c for c in META_COLUMNS if c in dataset['frame']]].reset_index(drop=True)
     oof = identity.copy()
     oof['source_row'] = dataset['source_rows']
@@ -219,7 +221,7 @@ def main():
     p.add_argument('--artifact-path')
     p.add_argument('--output-dir')
     p.add_argument('--mode', choices=('notebook','smoke'), default='notebook')
-    p.add_argument('--feature-mode', choices=('boruta','fixed23'), default='boruta')
+    p.add_argument('--feature-mode', choices=('boruta','fixed21','fixed23'), default='fixed21')
     p.add_argument('--n-trials', type=int)
     p.add_argument('--max-estimators', type=int)
     p.add_argument('--ad-coverage', type=float, default=.1)

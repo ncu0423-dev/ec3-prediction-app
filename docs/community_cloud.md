@@ -1,6 +1,6 @@
 # Streamlit Community Cloudへの配備
 
-このブランチには、指定23項目だけで学習・検証した本番モデルを
+このブランチには、指定21項目だけで学習・検証した本番モデルを
 `artifacts/original_model_artifact.joblib` に同梱しています。起動時に再学習せず、
 外部CSVやNotebookが配備先になくても画面・予測・AD・SHAPが動きます。
 
@@ -15,7 +15,9 @@
 モデル未検出の表示が残る場合は、Community Cloudの管理画面で **Reboot app** を実行します。
 モデルのダウンロードや、画面からのjoblibアップロードは不要です。
 
-ホームと左メニューに「指定23項目モデル」、入力特徴量数23と表示されればモデルを読み込めています。
+CSVの入力列は説明変数21項目と換算用MolWeightの計22列です。MolWeightはモデル・AD・SHAPには使いません。
+
+ホームと左メニューに「指定21項目モデル」、入力特徴量数21と表示されればモデルを読み込めています。
 「CSV一括予測」で入力テンプレートを取得し、入力後に「一括予測を実行」を押してください。
 単一物質は「単一物質の予測」で分子量と既知の特徴量を入力します。
 
@@ -45,6 +47,6 @@ python scripts/export_deployment_model.py \
   --output artifacts/original_model_artifact.joblib
 ```
 
-現在の配備元は `artifacts/fixed23_model_artifact.joblib` です。配備版は識別列等を除いたためSHA256は異なりますが、配備元と予測値・AD・SHAPの数値は同じです。
-23項目版の条件と検証は `fixed23.md` を参照してください。旧版の `artifacts/notebook_model_artifact.joblib` は比較時のバイト列を維持しています。
-`validation.md` のNotebook一致結果は旧452項目/Boruta版に対するもので、現在の23項目版とは別です。
+現在の配備元は `artifacts/fixed21_model_artifact.joblib` です。配備版は識別列等を除いたためSHA256は異なりますが、配備元と予測値・AD・SHAPの数値は同じです。
+21項目版の条件と検証は `fixed21.md` を参照してください。旧版の `artifacts/notebook_model_artifact.joblib` は比較時のバイト列を維持しています。
+`validation.md` のNotebook一致結果は旧452項目/Boruta版に対するもので、現在の21項目版とは別です。

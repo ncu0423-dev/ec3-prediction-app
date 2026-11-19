@@ -11,7 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from original_runtime import explain_prediction, load_artifact, predict_with_artifact, prepare_input_features
-from utils_io import MW_COL, read_csv_auto
+from utils_io import FIXED_FEATURE_SETS, MW_COL, read_csv_auto
 
 ROOT = Path(__file__).resolve().parent
 ARTIFACT_PATH = Path(os.environ.get("EC3_ARTIFACT_PATH", os.environ.get("ARTIFACT_PATH", str(ROOT / "artifacts/original_model_artifact.joblib")))).expanduser()
@@ -62,8 +62,9 @@ def _missing_model() -> None:
 
 def _training_label(artifact: dict) -> str:
     mode = artifact.get("training_mode", artifact.get("metadata", {}).get("training_mode"))
-    if artifact.get('metadata', {}).get('feature_mode') == 'fixed23':
-        return '指定23項目モデル（軽量動作確認用）' if mode == 'smoke' else '指定23項目モデル'
+    if artifact.get('metadata', {}).get('feature_mode') in FIXED_FEATURE_SETS:
+        label = f"指定{len(artifact['full_feature_columns'])}項目モデル"
+        return label + '（軽量動作確認用）' if mode == 'smoke' else label
     return {"notebook": "Notebook再現条件", "smoke": "軽量動作確認用"}.get(mode, "作成条件を要確認")
 
 
@@ -89,9 +90,11 @@ def _home(artifact: dict | None) -> None:
             st.write("入力列は学習時と同じ順序に揃えて、保存済みの前処理を適用します。")
             st.write("各Foldの予測から、Notebookに従って最小のEC3を採用します。AD内予測は、AD内と判定されたFoldだけを対象にします。")
             metadata = artifact.get("metadata", {})
-            if metadata.get('feature_mode') == 'fixed23':
-                st.write('指定された23項目だけで欠損補完・標準化・学習を行います。Borutaで項目を増減しません。')
-                st.caption('この23項目固定版は、452項目からBorutaで選択するNotebook再現版とは異なります。')
+            if metadata.get('feature_mode') in FIXED_FEATURE_SETS:
+                st.write(f"指定された{len(artifact['full_feature_columns'])}項目だけで欠損補完・標準化・学習を行います。Borutaで項目を増減しません。")
+                st.caption('この固定項目版は、452項目からBorutaで選択するNotebook再現版とは異なります。')
+                if MW_COL not in artifact['full_feature_columns']:
+                    st.write('MolWeightはEC3への換算専用の別入力です。説明変数・補完距離・AD・SHAPには使いません。')
             elif "notebook_reproduction_verified" in metadata:
                 st.write("現行環境での再現性チェック: " + ("検証済み（比較範囲は下記参照）" if metadata["notebook_reproduction_verified"] else "未確認"))
                 st.caption("元Notebookには比較用の学習済みモデル・保存済み予測がないため、過去の実行結果との数値一致は確認できません。")
@@ -148,7 +151,7 @@ def _single(artifact: dict) -> None:
     st.subheader("単一化学物質の予測")
     st.write("分子量と特徴量を入力してください。特徴量の値は空欄にできます。空欄は欠損値として、学習済みの補完処理へ渡します。")
     name = st.text_input("化学物質名（任意）", key="single_name")
-    mw = st.number_input("MolWeight（分子量）", value=180.16, min_value=0.0, format="%.6f", key="single_mw")
+    mw = st.number_input("MolWeight（分子量・EC3換算用）", value=180.16, min_value=0.0, format="%.6f", key="single_mw")
     features = [col for col in artifact["full_feature_columns"] if col != MW_COL]
     selected = set(artifact.get("selected_feature_columns", []))
     st.caption("下の「値」セルを選択すると数値を入力できます。特徴量名は学習時の名称です。表示順序はモデルの入力順序に対応します。")
@@ -164,6 +167,8 @@ def _single(artifact: dict) -> None:
             missing_count = _validate_frame(frame, artifact)
             if missing_count:
                 st.warning(f"{missing_count}個の欠損値を学習済みKNNImputerで補完します。入力が少ない場合、予測の解釈に注意してください。")
+                if MW_COL not in artifact['full_feature_columns'] and missing_count == len(artifact['full_feature_columns']):
+                    st.warning('説明変数がすべて空欄です。近さを判定する情報がないため学習データの項目平均で補完されます。既知の値を入力してください。')
             with st.spinner("予測とAD判定を計算しています…"):
                 result = predict_with_artifact(artifact, frame, compute_ad=True)
             st.session_state["single_result"] = result
@@ -183,7 +188,9 @@ def _batch(artifact: dict) -> None:
     st.write("テンプレートの全入力列を含むCSVを選んでください。Name、CAS Numberなどの識別列と、行の並び順は結果に保持されます。")
     columns = _input_columns(artifact)
     st.download_button("入力テンプレートCSVをダウンロード", dataframe_to_csv_bytes(pd.DataFrame(columns=columns)), "ec3_input_template.csv", "text/csv", key="input_template")
-    st.caption(f"{len(columns)}列。MolWeightは正の数を入力します。その他の欠損セルは学習済みKNNImputerで補完します。実測EC3の列は不要です。")
+    input_description = (f"説明変数{len(artifact['full_feature_columns'])}列＋換算専用MolWeight 1列（合計{len(columns)}列）"
+                         if MW_COL not in artifact['full_feature_columns'] else f"{len(columns)}列")
+    st.caption(input_description + '。MolWeightは正の数を入力します。説明変数の欠損セルは学習済みKNNImputerで補完します。実測EC3の列は不要です。')
     with st.expander("CSVの形式と欠損値について"):
         st.write("1行につき1物質です。列名はテンプレートと完全に一致させてください。列の並び替えは可能です。すべての特徴量列が必要ですが、欠損セルは空欄にできます。MolWeightの欠損・0以下・無限大は使用できません。")
         st.write("UTF-8 / CP932 / Shift-JIS、最大20 MB・10,000行。実測EC3は予測入力に使いません。アップロードしたデータと結果はセッションのメモリで扱います。")
@@ -275,8 +282,8 @@ def _scatter_report(report: pd.DataFrame | None, artifact: dict, space: str) -> 
 def _evaluation(artifact: dict) -> None:
     st.subheader("モデルの性能評価")
     st.write("学習に使ったデータ上の評価、交差検証の未学習Foldに対する予測（OOF）、独立した外部データの評価を区別して表示します。")
-    if artifact.get('metadata', {}).get('feature_mode') == 'fixed23':
-        st.info('説明変数は指定23項目に固定し、各Foldの学習部分で欠損補完・標準化します。外部検証データは学習へ混合しません。')
+    if artifact.get('metadata', {}).get('feature_mode') in FIXED_FEATURE_SETS:
+        st.info(f"説明変数は指定{len(artifact['full_feature_columns'])}項目に固定し、各Foldの学習部分で欠損補完・標準化します。外部検証データは学習へ混合しません。")
     else:
         st.info("Notebook再現条件では、特徴量選択をCV分割の前に全学習データへ適用します。この情報共有があるため、OOFの値だけで未知の化学物質に対する性能を判断しないでください。外部検証データは学習へ混合しません。")
     metrics, reports = artifact.get("metrics", {}), artifact.get("reports", {})

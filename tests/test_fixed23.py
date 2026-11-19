@@ -4,7 +4,7 @@ import pandas as pd
 import pytest
 
 from original_runtime import load_artifact, predict_with_artifact
-from utils_io import FIXED_FEATURE_COLUMNS, load_dataset, read_csv_auto
+from utils_io import FIXED23_FEATURE_COLUMNS as FIXED_FEATURE_COLUMNS, load_dataset, read_csv_auto
 
 EXPECTED = [
     'OVERALL OH rate constant', 'FM advection air', 'VdW surface DPSA2',

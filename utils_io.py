@@ -13,7 +13,7 @@ import pandas as pd
 MW_COL = 'MolWeight'
 TARGET_COLUMN_DEFAULT = 'LLNA_EC3'
 META_COLUMNS = ('No.', 'Name', 'CAS Number', 'SMILES', 'CAS_Number_qsar', 'SMILES_qsar')
-FIXED_FEATURE_COLUMNS = [
+FIXED23_FEATURE_COLUMNS = [
     'OVERALL OH rate constant', 'FM advection air', 'VdW surface DPSA2',
     'LUMO Energy', 'HOMO Energy', 'MolWeight', 'CombDipolPolariz', 'LogHL_pred',
     'LogKM_pred', 'alert_Protein_binding_by_OASIS',
@@ -24,7 +24,21 @@ FIXED_FEATURE_COLUMNS = [
 ]
 # Compatibility name for the former fixed-feature experiments. This list is
 # user-specified; it is not the result of the notebook's Boruta selection.
-NOTEBOOK_SELECTED_FEATURE_COLUMNS = FIXED_FEATURE_COLUMNS
+NOTEBOOK_SELECTED_FEATURE_COLUMNS = FIXED23_FEATURE_COLUMNS
+
+FIXED21_FEATURE_COLUMNS = [
+    'OVERALL OH rate constant', 'FM advection sediment', 'LUMO Energy',
+    'HOMO Energy', 'CombDipolPolariz', 'LogHL_pred', 'LogKM_pred',
+    'alert_Protein_binding_by_OASIS',
+    'judge_Protein_binding_alerts_for_skin_sensitization_according_to_GHS',
+    'potency_Protein_binding_alerts_for_skin_sensitization_according_to_GHS',
+    'DPRA.percCysdep', 'DPRA.percLysdep', 'DPRA.score',
+    'hCLAT.CD86.EC150..ug.ml.', 'h.CLAT.CV75', 'hCLAT.MIT', 'hCLAT.score',
+    'KS.EC1.5', 'KS.EC3', 'KS.IC50', 'sum_invitro',
+]
+# Current user-specified descriptors. MolWeight is a separate conversion input.
+FIXED_FEATURE_COLUMNS = FIXED21_FEATURE_COLUMNS
+FIXED_FEATURE_SETS = {'fixed21': FIXED21_FEATURE_COLUMNS, 'fixed23': FIXED23_FEATURE_COLUMNS}
 
 
 def ensure_dir(path):
@@ -130,8 +144,9 @@ def load_dataset(path, *, target_col=TARGET_COLUMN_DEFAULT, feature_columns=None
     target = validate_numeric_columns(frame, [target_col], require_mw=False)[target_col]
     if target.isna().any() or (target <= 0).any():
         raise ValueError('LLNA_EC3は全行で有限かつ0より大きい数値が必要です。')
+    molecular_weight = validate_numeric_columns(frame, [MW_COL])[MW_COL].to_numpy()
     return {'frame': frame, 'X': X, 'ec3': target.to_numpy(),
-            'mw': X[MW_COL].to_numpy(), 'encoding': encoding,
+            'mw': molecular_weight, 'encoding': encoding,
             'source_rows': original_rows, 'dropped_missing_mw_rows': dropped,
             'sha256': hashlib.sha256(Path(path).read_bytes()).hexdigest()}
 

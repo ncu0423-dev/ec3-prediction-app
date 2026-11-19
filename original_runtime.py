@@ -49,7 +49,7 @@ def load_artifact(path):
 
 
 def prepare_input_features(artifact, frame):
-    """All original descriptors are required because KNN uses full-space distances."""
+    """Validate saved descriptors and separate MW; only descriptors enter the model."""
     return validate_numeric_columns(frame, artifact['full_feature_columns'])
 
 
@@ -83,7 +83,7 @@ def _fold_inputs(artifact, frame, fold):
 
 def predict_with_artifact(artifact, input_df, *, compute_ad=True):
     full = prepare_input_features(artifact, input_df)
-    mw = full[MW_COL].to_numpy(dtype=float)
+    mw = validate_numeric_columns(input_df, [MW_COL])[MW_COL].to_numpy(dtype=float)
     predictions, ec3_predictions, ad_predictions, distances = {}, {}, {}, {}
     for fold in artifact['folds']:
         name = fold['fold_name']
@@ -161,7 +161,8 @@ def explain_prediction(artifact, frame, *, fold_name='fold_1'):
 
 
 def make_prediction_template(artifact):
-    return pd.DataFrame(columns=['No.', 'Name', 'CAS Number', 'SMILES', *artifact['full_feature_columns']])
+    columns = list(dict.fromkeys(['No.', 'Name', 'CAS Number', 'SMILES', *artifact['full_feature_columns'], MW_COL]))
+    return pd.DataFrame(columns=columns)
 
 
 # Clear aliases for applications embedding the runtime.

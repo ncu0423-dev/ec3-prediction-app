@@ -28,7 +28,8 @@ def test_export_removes_identifiers_without_mutating_source(synthetic_artifact, 
 
 def test_deployed_real_model_matches_canonical_predictions(repo_root):
     deployed = load_artifact(repo_root / 'artifacts' / 'original_model_artifact.joblib')
-    reference_name = ('fixed23_model_artifact.joblib' if deployed['metadata'].get('feature_mode') == 'fixed23'
+    feature_mode = deployed['metadata'].get('feature_mode')
+    reference_name = (f'{feature_mode}_model_artifact.joblib' if feature_mode in ('fixed21','fixed23')
                       else 'notebook_model_artifact.joblib')
     canonical_path = repo_root / 'artifacts' / reference_name
     if not canonical_path.is_file():

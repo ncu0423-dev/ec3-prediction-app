@@ -21,9 +21,9 @@ def real_inputs(repo_root):
 
 def test_saved_artifact_captures_real_training_conditions(trained_artifact, repo_root):
     frame, _ = read_csv_auto(repo_root / "data" / "DASS_join_data_opera_delete_LLNAnan.csv")
-    if trained_artifact['metadata'].get('feature_mode') == 'fixed23':
-        from utils_io import FIXED_FEATURE_COLUMNS
-        assert trained_artifact['full_feature_columns'] == FIXED_FEATURE_COLUMNS
+    if trained_artifact['metadata'].get('feature_mode') in ('fixed21','fixed23'):
+        from utils_io import FIXED_FEATURE_SETS
+        assert trained_artifact['full_feature_columns'] == FIXED_FEATURE_SETS[trained_artifact['metadata']['feature_mode']]
     else:
         assert trained_artifact["full_feature_columns"] == frame.columns[6:-1].tolist()
     assert len(trained_artifact["folds"]) == 5
@@ -66,7 +66,7 @@ def test_real_fold_predictions_match_direct_saved_pipelines(trained_artifact, re
         matrix = fold["pipeline"].transform(frame)[:, fold["selected_feature_mask"]]
         predicted = fold["model"].predict(matrix)
         # Evaluate the notebook arithmetic directly, preserving float32 exponentiation.
-        ec3 = frame.MolWeight.to_numpy() / (10 ** predicted)
+        ec3 = real_inputs.MolWeight.to_numpy() / (10 ** predicted)
         np.testing.assert_allclose(result["pred_y_" + fold["fold_name"]], predicted, rtol=0, atol=0)
         np.testing.assert_allclose(result["Predict_LLNA EC3_" + fold["fold_name"]], ec3, rtol=1e-12, atol=1e-12)
         ec3_by_fold.append(ec3)
