@@ -1,12 +1,29 @@
-# LLNA EC3 皮膚感作性予測アプリ（Notebook再現版）
+# LLNA EC3 皮膚感作性予測アプリ
 
-**通常の配備版を元Notebookの方式へ戻しました。** 学習・外部検証とも、452項目でKNN欠損補完と標準化を行い、その後にBoruta選択項目をモデルへ渡します。現在の選択結果は、利用者が提示した21項目と一致しています。21項目だけで前処理していた固定版とは別のモデルです。
+**現在の入力CSVは、No.・Name・CAS Numberの3列＋指定21項目の計24列です。** 指定順の [CSVテンプレート](templates/csv21_input_template.csv) をアプリから取得し、アップロード後に各物質のMolWeight（分子量）を画面で入力します。全行の分子量が有効になってから予測できます。[現在の入力仕様と検証記録](docs/csv21_input.md)。
 
-予測・学習条件はNotebookセル41–42、最終CSVはセル265/270を基準にします。末尾のAD外割合0.2を既定にし、初期0.0・別枝0.1も明示的に指定できます。必要なhCLAT元資料2ファイルは未提供なので、追加in vitro ADと、それに依存する解析は未再現です。**全セル・過去PCの未保存モデルまで完全一致したという意味ではありません。** [復旧監査](docs/notebook_restore_audit.md) と [現在の復旧・検証記録](docs/notebook_restored.md) を参照してください。
+モデルは21項目だけで欠損補完・標準化・予測を行います。VdW surface DPSA2や他の431項目は要求しません。MolWeightはEC3換算専用で、説明変数・補完距離・AD・SHAPには使いません。**これは452項目前処理のNotebook再現版とは異なるモデルです。** Notebook版と固定21/23項目版は履歴として保持します。
 
-## 起動
+## 使い方
 
-Python3.12を使用します。依存バージョンは `requirements.txt` に固定しています。
+1. 「CSV一括予測」でテンプレートをダウンロード。
+2. No.・Name・CAS Numberと21項目を入力し、CSVを選択。
+3. 画面の「物質ごとの分子量」表に各行のMolWeightを入力。
+4. 「一括予測を実行」し、結果CSVを取得。
+
+CSVにはMolWeight列を含める必要はありません。実測LLNA_EC3やSMILESも不要です。
+既存CSVにMolWeightがある場合のみ任意の末尾列として受け取り、画面で確認できます。
+識別列と行順を保ち、No.・CASが重複していても内部の入力行番号で分子量を対応付けます。
+CSVが変われば以前の分子量や予測結果をそのまま流用しません。
+
+モデルのターゲットは `y=log10(MolWeight / EC3)`、逆変換は `EC3=MolWeight / 10**y` です。
+**CSVにMolWeightがないことと、EC3計算にMolWeightが不要なことは別です。** 分子量を一切使わずにEC3を出すにはターゲットを変更した別モデルの学習が必要で、今回は行いません。分子量を推測や固定値で埋めません。
+
+各説明変数の空欄は、21項目でfitしたKNNImputerで補完します。全説明変数が欠損すると学習項目平均へフォールバックします。MolWeightは有限・正の値が必須です。非数値・無限大・列不足・重複列・指定外列はエラーにします。列順が違うCSVは列名で指定順に整列します。
+
+## 起動・配備
+
+Python3.12を使用します。依存バージョンはrequirements.txtで固定しています。
 
 ```bash
 python -m venv .venv
@@ -15,95 +32,66 @@ python -m pip install -r requirements-dev.txt
 streamlit run streamlit_app.py --server.address 0.0.0.0 --server.port 8501
 ```
 
-このクラウド作業環境では `/workspace/.venvs/ec3/bin/activate` を使用できます。Codespacesでは `.devcontainer/devcontainer.json` が依存を導入して起動し、Portsの8501からアクセスできます。Community CloudではPython3.12、ブランチ `codex/notebook-faithful-ec3-app`、入口 `streamlit_app.py` を指定してください。更新後は再読み込み、必要ならReboot appを行います。[配備手順](docs/community_cloud.md)。
+この作業環境では `/workspace/.venvs/ec3/bin/activate` を使えます。
+Codespacesではdevcontainer設定を利用し、Portsの8501からアクセスします。
+Community CloudはPython3.12、ブランチ `codex/notebook-faithful-ec3-app`、入口 `streamlit_app.py`。
+更新後に再読み込み、必要ならReboot appしてください。[配備手順](docs/community_cloud.md)。
 
-既定のモデルは `artifacts/original_model_artifact.joblib` です。非公開リポジトリへ、識別情報を除いた配備モデルを同梱しています。画面起動時に再学習しません。別モデルを選ぶ場合だけ `EC3_ARTIFACT_PATH` を明示してください。joblibは信頼できる自作モデルだけを読み込んでください。
+既定の配備モデルは `artifacts/original_model_artifact.joblib`。
+画面起動時に学習や元CSVの読み込みは行いません。モデル名は「指定21項目モデル」です。
+`EC3_ARTIFACT_PATH` を設定している場合は古いNotebookモデル等を指していないか確認してください。
+joblib形式は信頼できるモデルだけを読み込みます。
 
-## 前処理・選択・学習の順序
+アップロードや追加入力した分子量はセッションメモリで扱い、自動でディスクへ保存しません。
+モデルにはKNN/AD/SHAPに必要な数値参照データが残りますが、配備時の評価表から物質名・CAS・SMILES等を除きます。
+GitHubのPrivate設定とCommunity Cloudの閲覧権限は別です。
 
-1. 元のCSVから先頭6識別列と最終目的変数列を除き、元順序で452項目を抽出。MolWeightも含みます。
-2. 全学習データで `KNNImputer(n_neighbors=5, weights='uniform')` → `StandardScaler` をfitしてBoruta用の入力を作成。
-3. RandomForest深さ5、Boruta perc100、random_state0、support_で選択。現在は21項目を選択します。固定リストで置換しません。
-4. 外側5-foldの各学習部分で、452項目のKNN補完→標準化をfitし直す。その後に同じBorutaマスクを適用。
-5. 外側の検証部分・外部検証・新規入力は、保存した**各Foldの学習済み452項目前処理**でtransformし、選択項目を抽出。
-6. 内側5-foldによるOptuna探索後、各外側モデルをfit。分割seed1037、内側seed0、XGBoost seed0。各Fold1000 trials、上限100000木、early stopping15。探索範囲・最良木数の決め方は原本を保持。
+## 学習条件・モデルの再利用
 
-KNNの近さは標準化の前に計算します。全学習データでのBoruta選択と、内側CV前の前処理という原本の情報共有はそのまま維持し、別のリーク対策方式へ勝手に変えません。
+原本NotebookとDASS/newCE CSVは変更しません。学習154件、外部74件から分子量欠損2件を除いた72件は学習に混合しません。元データの照合用SHAは [data_provenance.json](docs/data_provenance.json)。
 
-## 必要な入力
-
-**CSVには452項目すべての列名が必要です。** MolWeightはその中に含まれるので、換算用の別列を追加して453列にする必要はありません。選択21項目だけのCSVは使えません。テンプレートを新しく取得してください。
-
-セルの欠損は原本と同じKNNで補完しますが、未選択431項目を空欄で追加しても、既知の全項目がある元CSVと同じ変換になるとは限りません。全ての既知のdescriptor値を含むCSVを推奨します。MolWeightはEC3換算にも必要なので有限・正の値が必須です。Name・CAS等の識別列は任意で追加でき、行順とともに結果へ保持します。実測 `LLNA_EC3` は予測入力に不要です。
-
-アップロードはセッションのメモリで扱い、CSVを自動保存しません。UTF-8/BOM・CP932・Shift-JISに対応します。CLIで明示した出力、学習で作成したモデル・評価結果は保存します。
-
-## 予測と評価
-
-- `y=log10(MolWeight / EC3)`、`EC3=MolWeight / 10**y`。原本と同じfloat32予測値の演算順を保持。
-- 5 Foldの最小EC3を最終予測とし、yも同じFoldから取得。AD内予測はAD内Foldだけから最小EC3を選び、候補なしは欠損。
-- kNN ADは選択・標準化後の空間、k=5。自己距離を除いた学習距離平均の順序統計で閾値を求めます。coverageはAD外割合で、最終枝の0.2が既定。全体ADは1つ以上のFoldがAD内かで表示します。
-- 学習部分・OOF・外部72件を区別。R²/RMSE、厳密な1/5～5倍範囲、GHS/ECETOCの原本境界・予測行×実測列の分類表を表示。MAEは追加指標と明示。
-- 外部の最小EC3と平均値を区別。yの平均とEC3の平均は別々に計算し、相互の逆変換とはしません。
-- SHAPはFoldごとの全学習行、全選択項目を使用。原本のviolin Summary、Waterfall、重要度 `abs(sum(SHAP))` とその数値的なFold間平均を保持します。Beeswarmと新規入力の説明は追加機能として区別。SHAPはy空間の寄与で、EC3への直接加算ではありません。
-
-外部全72件のEC3 R²は約-0.712です。計算の再現と、実用上十分な予測性能は別です。Notebook中の事後的に最高R²を選ぶ38件の部分集合と、外部全件評価を混同しません。
-
-## 原本データと学習・復旧
-
-原本Notebookと2つのCSVは変更していません。学習154件、外部74件はMolWeight欠損2件を除いて72件。外部データを学習へ混合しません。照合用SHA256は [data_provenance.json](docs/data_provenance.json) に記録しています。原本Notebookと外部CSVはGitから除外しています。
-
-```text
-data/DASS_join_data_opera_delete_LLNAnan.csv
-data/newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv
-reference_private/★XGBoost_model_refact_tokunaga.ipynb
-```
-
-元モデルを再学習する場合（長時間）:
+現在の固定21項目モデルは各Fold1000 trials（外側5-fold、内側5-fold）、random_state1037、上限100000木・early stopping15で学習済みのモデルを再利用しました。元モデルSHA、21列の補完器・XGBoost、1000試行履歴、9ライブラリ版と原本データSHAが検証記録に一致したため、重みを再学習しません。直前のサービスと同じAD外割合.2を維持し、閾値・AD関連評価のみ再計算しています。
 
 ```bash
-python train.py --mode notebook --feature-mode boruta --fold-workers 4 \
-  --ad-coverage .2 --artifact-path artifacts/notebook_trained_model_artifact.joblib \
-  --output-dir outputs/notebook_trained
-```
-
-軽量検証は `--mode smoke --n-trials 2 --max-estimators 200` を明示し、本番と混同しません。Borutaは軽量化せずOptunaも実際に実行します。以前の `fixed21` / `fixed23` モードは履歴再現用として残しますが、既定のアプリ・CLIでは使いません。
-
-今回の復旧では、既存の1000 trials×5モデルと全原本ハッシュ・ライブラリ版・112項目の独立照合記録が一致したため、その重みを再利用しました。再fitせず、最終AD=.2の判定・評価を再計算しています。
-
-```bash
-python scripts/restore_notebook_model.py
+# 検証済み固定21項目モデルから、現在の画面用プロファイルを再構成
+python scripts/prepare_csv21_model.py
 python scripts/export_deployment_model.py \
-  --source artifacts/notebook_restored_model_artifact.joblib \
+  --source artifacts/csv21_model_artifact.joblib \
   --output artifacts/original_model_artifact.joblib
+
+# 明示的に新しい固定21項目モデルを学習する場合（長時間）
+python train.py --mode notebook --feature-mode fixed21 --fold-workers 4 \
+  --ad-coverage .2 --artifact-path artifacts/new_fixed21_model_artifact.joblib \
+  --output-dir outputs/new_fixed21
 ```
 
-比較済みの `artifacts/notebook_model_artifact.joblib` はバイト単位で変更していません。再学習時にも別の保存先を使ってください。
+欠損補完→標準化の順序、yの変換・逆変換、最小EC3採用、k=5のAD規則は従来を維持します。
+AD全体は1つ以上のFoldが範囲内か、AD限定予測は対象Foldのみの最小EC3です。
+MAEや分類表、SHAPは対象モデルの値で表示し、旧Notebookの一致記録や精度を流用しません。
+外部72件のEC3 R²は約-0.680で、十分な予測性能を示していません。[現在の検証数値](docs/csv21_validation.json)。
 
-## 検証コマンド
+## テストと構成
 
 ```bash
 EC3_TEST_ARTIFACT=artifacts/original_model_artifact.joblib python -m pytest -q
-python original_runtime.py --template-csv /tmp/ec3-template.csv
-python original_runtime.py --input-csv /path/to/full-descriptors.csv --output-csv /tmp/predictions.csv
-
-# 現在コードを原本クラスと別々に軽量学習して照合
-python scripts/verify_notebook.py --ad-coverage .2 \
-  --artifact-path artifacts/notebook_current_smoke.joblib \
-  --output outputs/notebook_restored/current_code_source_comparison.json
-
-# 保存モデルで原本のAD0/.1/.2を照合（再学習なし）
-python scripts/verify_notebook.py --ad-coverage-only \
-  --artifact-path artifacts/notebook_restored_model_artifact.joblib \
-  --output outputs/notebook_restored/ad_source_comparison.json
 ```
 
-元PCの最終モデル・予測値はNotebookに保存されていないため、過去実行との一致は証明できません。現在の固定環境での原本クラスとの照合と区別します。
+Web用24列CSVと、バックエンド内部の換算用入力（21項目＋MolWeight）は別です。
+CLIで直接予測する場合は、既知のMolWeight列を追加した入力を指定してください。
+通常の利用者はアプリのCSV画面と分子量入力表を使います。
 
-## 未提供情報と構成
+`csv_input_schema.py` は24列の順序・検証、`csv_batch_inputs.py` は分子量の行対応、
+`streamlit_app.py` は画面、`original_runtime.py` は保存モデルの推論、`train.py` は学習です。
+`utils_io.py` はデータ読み込み、`utils_ml.py` は共通モデル計算、`notebook_metrics.py` は評価計算です。
 
-追加in vitro ADには `Annex-2-in-vitro-in-silico-in-vivo-defined-approaches.csv` と `newCE_data.csv` のhCLAT実験callが必要です。`hCLAT.score`で推測代用せず、未取得と表示します。2000 seed探索・10000回の部分集合解析・矛盾する発表図は通常の学習・画面起動で自動実行しません。単一の「全セルをそのまま動かした仕様」とは呼びません。
+## 履歴
 
-`train.py` は学習、`original_runtime.py` は推論、`utils_io.py` は入力検査、`utils_ml.py` は原本計算、`notebook_metrics.py` は原本評価、`streamlit_app.py` は画面です。長い原本classを分離していますが、比較で数値を確認します。旧 `app.py` / `app_research.py` / `train_model*.py` / `predict.py` は旧固定モデルの互換用で、通常のNotebook再現アプリには使いません。[既存構成](docs/repository_inventory.md)、[旧21項目固定版](docs/fixed21.md)、[旧23項目固定版](docs/fixed23.md)。
+452項目の元Notebook再現版のモデル・記録は保持していますが、通常のアプリには使用しません。
+その版の112/166項目一致の証拠は、現在の21項目だけの前処理へ適用できません。
+[Notebook復旧記録](docs/notebook_restored.md)、[原本監査](docs/notebook_audit.md)、
+[固定21項目版の元の学習](docs/fixed21.md)、[旧23項目版](docs/fixed23.md)。
+元Notebookの追加in vitro ADに必要なhCLAT資料2ファイルは未提供です。
+旧app.py/app_research.py/train_model*.py/predict.pyも互換用に残しますが、現在のアプリの入口はstreamlit_app.pyです。
 
-Git管理する生成モデルは識別情報を除いた配備用 `artifacts/original_model_artifact.joblib` のみです。他の生成物と原本参照資料は除外します。数値の学習参照データはKNN/AD/SHAPに必要なため残り、完全匿名化ではありません。リポジトリとアプリの閲覧権限は別に管理してください。
+Git管理する生成モデルは配備用original_model_artifact.joblibのみ。
+原本Notebook・外部CSV・他の生成物はGitから除外しています。

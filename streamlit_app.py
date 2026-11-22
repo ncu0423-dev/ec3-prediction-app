@@ -217,6 +217,9 @@ def _single(artifact: dict) -> None:
 
 
 def _batch(artifact: dict) -> None:
+    if artifact.get('metadata', {}).get('feature_mode') == 'fixed21':
+        _batch_fixed21(artifact)
+        return
     st.subheader("CSVによる一括予測")
     st.write("テンプレートの全入力列を含むCSVを選んでください。Name、CAS Numberなどの識別列と、行の並び順は結果に保持されます。")
     columns = _input_columns(artifact)
@@ -259,6 +262,68 @@ def _batch(artifact: dict) -> None:
     st.success(f"{len(result):,}件の予測が完了しました。")
     st.dataframe(result, hide_index=True, width="stretch")
     st.download_button("予測結果CSVをダウンロード", dataframe_to_csv_bytes(result), "ec3_batch_predictions.csv", "text/csv", key="batch_download")
+
+
+def _batch_fixed21(artifact: dict) -> None:
+    from csv_batch_inputs import attach_molecular_weights, mw_entry_frame
+    from csv_input_schema import make_template_frame, normalize_csv_input
+
+    st.subheader('CSVによる一括予測')
+    st.write('CSVはNo.・Name・CAS Numberの3列に続けて、指定21項目を並べた24列です。分子量はアップロード後に物質ごとに入力します。')
+    st.download_button('入力テンプレートCSVをダウンロード',
+        dataframe_to_csv_bytes(make_template_frame()), 'ec3_input_template.csv', 'text/csv', key='input_template')
+    st.caption('CSVの説明変数は21項目だけです。MolWeightは説明変数ではなく、予測yをEC3へ換算する別入力です。')
+    uploaded = st.file_uploader('予測用CSV', type=['csv'], key='batch_csv')
+    if uploaded is None:
+        st.session_state.pop('batch_result', None)
+        return
+    try:
+        frame = normalize_csv_input(read_uploaded_csv(uploaded))
+    except (ValueError, KeyError, TypeError) as error:
+        st.session_state.pop('batch_result', None)
+        st.error(str(error))
+        return
+    st.write(f'入力データ: {len(frame):,}行 × {len(frame.columns):,}列')
+    st.dataframe(frame.head(10), hide_index=True, width='stretch')
+    missing = int(frame[artifact['full_feature_columns']].isna().sum().sum())
+    if missing:
+        st.warning(f'説明変数の{missing:,}セルが欠損しています。21項目で学習したKNNImputerで補完します。')
+    st.subheader('物質ごとの分子量（MolWeight）')
+    st.write('各行に有限で0より大きい分子量を入力してください。No.やCAS番号が重複していても、入力行番号で対応付けます。値の推測や固定値への置換は行いません。')
+    content = pd.util.hash_pandas_object(frame, index=True).values.tobytes()
+    upload_key = hashlib.sha256(content).hexdigest()
+    edited = st.data_editor(mw_entry_frame(frame), key='batch_mw_' + upload_key,
+        disabled=['入力行', 'No.', 'Name', 'CAS Number'], hide_index=True,
+        num_rows='fixed', width='stretch',
+        column_config={MW_COL: st.column_config.NumberColumn('MolWeight（分子量）', format='%.8g')})
+    combined, fingerprint = None, None
+    try:
+        combined = attach_molecular_weights(frame, edited)
+        fingerprint = _signature(combined)
+    except (ValueError, KeyError, TypeError) as error:
+        st.info('全物質のMolWeightを入力すると、一括予測を実行できます。')
+        st.caption(str(error))
+    cached = st.session_state.get('batch_result')
+    if fingerprint is None or (cached is not None and cached[0] != fingerprint):
+        st.session_state.pop('batch_result', None)
+    clicked = st.button('一括予測を実行', type='primary', key='batch_predict', disabled=combined is None)
+    if clicked and combined is not None:
+        try:
+            with st.spinner('予測とAD判定を計算しています…'):
+                result = predict_with_artifact(artifact, combined, compute_ad=True)
+            st.session_state['batch_result'] = (fingerprint, result)
+            st.session_state['latest_prediction_input'] = combined
+        except (ValueError, KeyError, TypeError) as error:
+            st.session_state.pop('batch_result', None)
+            st.error(str(error))
+    cached = st.session_state.get('batch_result')
+    if cached is None or cached[0] != fingerprint:
+        return
+    result = cached[1]
+    st.success(f'{len(result):,}件の予測が完了しました。')
+    st.dataframe(result, hide_index=True, width='stretch')
+    st.download_button('予測結果CSVをダウンロード', dataframe_to_csv_bytes(result),
+        'ec3_batch_predictions.csv', 'text/csv', key='batch_download')
 
 
 def _show_metrics(metrics: dict | None) -> None:

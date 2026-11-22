@@ -98,14 +98,37 @@ from unittest.mock import patch
 import streamlit as st
 import streamlit_app as ui
 ui.ARTIFACT_PATH = Path(st.session_state["_test_artifact_path"])
-with patch.object(ui.st, "file_uploader", return_value=BytesIO(st.session_state["_test_uploaded_csv"])):
+original_editor = ui.st.data_editor
+original_download = ui.st.download_button
+def edit_conversion_values(data, *args, **kwargs):
+    edited = original_editor(data, *args, **kwargs)
+    key = str(kwargs.get("key", ""))
+    if key.startswith("batch_mw_"):
+        st.session_state["_test_mw_editor_key"] = key
+        values = st.session_state.get("_test_mw_values_by_key", {}).get(key)
+        if values is not None:
+            edited = edited.copy()
+            edited["MolWeight"] = values
+    return edited
+def capture_download(*args, **kwargs):
+    if kwargs.get("key") == "input_template":
+        st.session_state["_test_template_bytes"] = kwargs.get("data", args[1] if len(args)>1 else None)
+    return original_download(*args, **kwargs)
+with patch.object(ui.st, "file_uploader", return_value=BytesIO(st.session_state["_test_uploaded_csv"])), \
+     patch.object(ui.st, "data_editor", side_effect=edit_conversion_values), \
+     patch.object(ui.st, "download_button", side_effect=capture_download):
     ui.main()
 """
 
 
 def test_batch_ui_prediction_download_and_column_error(repo_root, smoke_artifact_path):
+    from original_runtime import load_artifact
     frame, _ = read_csv_auto(repo_root / "data" / "DASS_join_data_opera_delete_LLNAnan.csv")
     inputs = frame.head(3).drop(columns="LLNA_EC3")
+    fixed21 = load_artifact(smoke_artifact_path)['metadata'].get('feature_mode') == 'fixed21'
+    if fixed21:
+        from csv_input_schema import requested_csv_columns
+        inputs = inputs[requested_csv_columns()]
     # AppTest does not expose a file-uploader setter; substitute its in-memory return value.
     app = AppTest.from_string(BATCH_SCRIPT, default_timeout=30)
     app.session_state["_test_artifact_path"] = str(smoke_artifact_path)
@@ -113,6 +136,11 @@ def test_batch_ui_prediction_download_and_column_error(repo_root, smoke_artifact
     app.session_state["navigation"] = "CSV一括予測"
     app.run()
     assert not app.exception
+    if fixed21:
+        assert app.button(key="batch_predict").disabled
+        key = app.session_state["_test_mw_editor_key"]
+        app.session_state["_test_mw_values_by_key"] = {key: frame.head(3).MolWeight.tolist()}
+        app.run()
     assert not app.error
     app.button(key="batch_predict").click().run()
     assert not app.exception

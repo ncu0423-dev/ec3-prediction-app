@@ -1,0 +1,84 @@
+{
+  "workflow": "csv24_identifiers3_descriptors21_then_screen_MW",
+  "upload_csv_columns": [
+    "No.",
+    "Name",
+    "CAS Number",
+    "OVERALL OH rate constant",
+    "FM advection sediment",
+    "LUMO Energy",
+    "HOMO Energy",
+    "CombDipolPolariz",
+    "LogHL_pred",
+    "LogKM_pred",
+    "alert_Protein_binding_by_OASIS",
+    "judge_Protein_binding_alerts_for_skin_sensitization_according_to_GHS",
+    "potency_Protein_binding_alerts_for_skin_sensitization_according_to_GHS",
+    "DPRA.percCysdep",
+    "DPRA.percLysdep",
+    "DPRA.score",
+    "hCLAT.CD86.EC150..ug.ml.",
+    "h.CLAT.CV75",
+    "hCLAT.MIT",
+    "hCLAT.score",
+    "KS.EC1.5",
+    "KS.EC3",
+    "KS.IC50",
+    "sum_invitro"
+  ],
+  "upload_column_count": 24,
+  "predictor_count": 21,
+  "molecular_weight_input": "per_row_screen_required_for_EC3",
+  "training_target": "log10(MolWeight / EC3)",
+  "mw_is_predictor": false,
+  "weights_reused_without_retraining": true,
+  "original_notebook_452_preprocessing": false,
+  "AD_excluded_fraction": 0.2,
+  "original_fixed21_source_sha256": "b573eeeb47d012bc83fe7a2d7ed55974abde0f14830bf96c78d16f45d743e0e3",
+  "prepared_source_sha256": "fe98b0fe03b869e3d261ba519baaca7482bf643feeb4f64969bcdc035daf983e",
+  "deployment_sha256": "a6b18dfdcb806a55d63eaaa496da15110c974dc34e5fece9cf2fa407ce100cfb",
+  "full_trial_counts": [
+    1000,
+    1000,
+    1000,
+    1000,
+    1000
+  ],
+  "tests": {
+    "passed": 134,
+    "failed": 0,
+    "skipped": 0,
+    "seconds": 27.53
+  },
+  "metrics": {
+    "oof_ec3": {
+      "n": 154,
+      "r2": 0.269442384104118,
+      "rmse": 52.167996095108336,
+      "mae": 30.589761518611592
+    },
+    "external_ec3": {
+      "n": 72,
+      "r2": -0.6800338842113642,
+      "rmse": 92.90302137661709,
+      "mae": 67.2332206460332
+    },
+    "external_inAD_ec3": {
+      "n": 46,
+      "r2": -0.7110626560733777,
+      "rmse": 91.90928419560002,
+      "mae": 68.94575879945093
+    }
+  },
+  "versions": {
+    "numpy": "2.5.4",
+    "pandas": "3.0.6",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0",
+    "optuna": "5.0.0",
+    "Boruta": "0.4.3",
+    "shap": "0.54.1",
+    "joblib": "1.6.0"
+  }
+}

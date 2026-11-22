@@ -1,6 +1,8 @@
-# Notebook再現版への復旧記録
+# 履歴：Notebook再現版への復旧記録
 
-## 現在の仕様
+この文書は以前の452項目版の記録です。現在の配備版は [csv21_input.md](csv21_input.md) を参照してください。
+
+## 当時の仕様
 
 - 既定のアプリと学習CLIは固定21/23項目版をやめ、NotebookのBoruta方式へ戻しています。
 - 入力・KNN欠損補完・StandardScalerは452項目。MolWeightも含みます。

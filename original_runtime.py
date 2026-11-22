@@ -69,7 +69,7 @@ def _select_min_ec3_fold(pred_y_fold, pred_ec3_fold, *, eligibility=None):
     has_candidate = valid.any(axis=1)
     rows = np.arange(len(y))
     return pd.DataFrame({
-        'selected_fold': np.where(has_candidate, np.asarray(pred_y_fold.columns)[indices], None),
+        'selected_fold': pd.array(np.where(has_candidate, np.asarray(pred_y_fold.columns)[indices], None), dtype='string'),
         'selected_fold_index': np.where(has_candidate, indices, -1),
         'pred_y': np.where(has_candidate, y[rows, indices], np.nan),
         'pred_ec3': np.where(has_candidate, ec3[rows, indices], np.nan),
@@ -130,7 +130,7 @@ def predict_with_artifact(artifact, input_df, *, compute_ad=True):
         # An uncomputed AD must never be presented as inside.
         for column in ('kNN_AD', 'any_kNN_AD'):
             out[column] = pd.array([pd.NA] * len(out), dtype='boolean')
-        out['selected_inAD_fold'] = None
+        out['selected_inAD_fold'] = pd.array([None] * len(out), dtype='string')
         out['knn_inAD_pred_y'] = np.nan
         out['knn_inAD_Predict_LLNA EC3'] = np.nan
     for name in pred_y_fold:
