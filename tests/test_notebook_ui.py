@@ -15,7 +15,8 @@ from streamlit_app import (
 
 @pytest.fixture(scope='module')
 def notebook_artifact(repo_root):
-    for name in ('notebook_restored_model_artifact.joblib', 'notebook_model_artifact.joblib'):
+    for name in ('notebook_deployment_artifact.joblib', 'notebook_restored_model_artifact.joblib',
+                 'notebook_model_artifact.joblib'):
         path = repo_root / 'artifacts' / name
         if path.is_file():
             return path, load_artifact(path)

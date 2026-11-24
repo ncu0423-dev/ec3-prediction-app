@@ -11,6 +11,7 @@ import pandas as pd
 import streamlit as st
 
 from original_runtime import explain_prediction, load_artifact, predict_with_artifact, prepare_input_features
+from model_profiles import MODEL_LABELS, model_paths, validate_profile_artifact
 from utils_io import FIXED_FEATURE_SETS, MW_COL, read_csv_auto
 
 ROOT = Path(__file__).resolve().parent
@@ -46,6 +47,54 @@ def _load_model(path: str, modified_ns: int) -> dict:
     return load_artifact(path)
 
 
+def _select_model(artifact_path: Path | None = None) -> tuple[str, Path]:
+    """Choose independent saved models, keeping the legacy explicit-path override."""
+    paths = model_paths(ROOT)
+    default_profile = "notebook452"
+    legacy_path = artifact_path or os.environ.get("EC3_ARTIFACT_PATH") or os.environ.get("ARTIFACT_PATH")
+    if legacy_path:
+        path = Path(legacy_path).expanduser()
+        path = path if path.is_absolute() else ROOT / path
+        if path.is_file():
+            try:
+                model = _load_model(str(path), path.stat().st_mtime_ns)
+                if model.get("metadata", {}).get("feature_mode") == "fixed21":
+                    default_profile = "fixed21"
+            except Exception:
+                # The selected model's load error is shown below; never substitute another model.
+                pass
+        paths[default_profile] = path
+    labels = list(MODEL_LABELS.values())
+    label = st.selectbox("予測モデルを選択", labels,
+                         index=labels.index(MODEL_LABELS[default_profile]), key="model_profile")
+    profile = next(key for key, value in MODEL_LABELS.items() if value == label)
+    return profile, paths[profile]
+
+
+def _activate_model(path: Path) -> None:
+    """Invalidate inputs, results and SHAP before rendering another model's widgets."""
+    stamp = path.stat().st_mtime_ns if path.is_file() else "missing"
+    identity = (st.session_state["model_profile"], str(path), stamp)
+    previous = st.session_state.get("_active_model_identity")
+    if previous != identity:
+        for key in list(st.session_state):
+            if key.startswith(("single_", "batch_", "shap_")) or key in (
+                "latest_prediction_input", "external_prediction_method", "evaluation_space",
+            ):
+                del st.session_state[key]
+    st.session_state["_active_model_identity"] = identity
+
+
+def _active_artifact_path() -> Path:
+    identity = st.session_state.get("_active_model_identity")
+    return Path(identity[1]) if identity is not None else ARTIFACT_PATH
+
+
+def _model_filename(artifact: dict, suffix: str) -> str:
+    profile = "notebook452" if _is_notebook_workflow(artifact) else "fixed21"
+    return f"ec3_{profile}_{suffix}.csv"
+
+
 def _folds(artifact: dict) -> list[dict]:
     raw = artifact["folds"]
     if isinstance(raw, dict):
@@ -57,7 +106,7 @@ def _missing_model() -> None:
     st.error("利用できる学習済みモデルがありません。予測・評価・SHAPには、学習処理で保存したモデルが必要です。")
     st.write("管理者がREADMEの学習手順に従ってモデルを作成してください。学習条件は次のコマンドで確認できます。")
     st.code("python train.py --help", language="bash")
-    st.caption("既定の保存先: artifacts/original_model_artifact.joblib。画面を開くだけで再学習は行いません。")
+    st.caption(f"選択中のモデル: {_active_artifact_path().name}。画面を開くだけで再学習は行いません。")
 
 
 def _training_label(artifact: dict) -> str:
@@ -97,7 +146,7 @@ def _home(artifact: dict | None) -> None:
         st.subheader("XGBoostとNAMs")
         st.write("XGBoostは複数の決定木を組み合わせる機械学習手法です。本研究は、新たな動物実験代替手法（NAMs）の活用を目指し、既存の化学物質データから予測を行います。")
     st.subheader("使い方")
-    st.markdown("1. **単一物質の予測**で分子量と特徴量を入力するか、**CSV一括予測**でテンプレートに沿ったCSVを選びます。\n2. 予測LLNA EC3とADを確認し、必要に応じて結果をダウンロードします。\n3. **モデルの性能評価**で検証結果を、**SHAPによる説明**で選択したFoldの寄与を確認します。")
+    st.markdown("1. 左の**予測モデルを選択**で、21項目版か452項目版を選びます。\n2. **単一物質の予測**で値を入力するか、**CSV一括予測**で選択中のモデルのテンプレートを取得してCSVを選びます。\n3. 予測LLNA EC3とADを確認し、結果をダウンロードします。**モデルの性能評価**ではDASSの検証予測（OOF）、**SHAPによる説明**では特徴量の寄与を確認できます。")
     st.info("予測は研究を支援する推定値です。適用範囲や実験データを含めて解釈してください。アップロードしたCSVは、このアプリからディスクへ保存しません。")
     if artifact is None:
         _missing_model()
@@ -122,7 +171,7 @@ def _home(artifact: dict | None) -> None:
                 st.dataframe(pd.DataFrame({"特徴量": _selected_features(artifact)}), hide_index=True, width="stretch")
             if _is_notebook_workflow(artifact) and "notebook_reproduction_verified" in metadata:
                 st.write("現行環境での再現性チェック: " + ("検証済み（比較範囲は下記参照）" if metadata["notebook_reproduction_verified"] else "未確認"))
-                st.caption("元Notebookには比較用の学習済みモデル・保存済み予測がないため、過去の実行結果との数値一致は確認できません。")
+                st.caption("元Notebookのクラスと現行の固定環境で計算を照合しています。DASS_predict_resultを作成した当時の学習済みモデルとの一致は未確認のため、過去CSVとの完全一致を保証するものではありません。")
             if metadata.get("source_parity_scope"):
                 st.write("ソースコードとの比較範囲: " + str(metadata["source_parity_scope"]))
             if "knn_k" in metadata:
@@ -138,9 +187,10 @@ def _input_columns(artifact: dict) -> list[str]:
 
 
 def _signature(frame: pd.DataFrame) -> str:
-    model_version = str(ARTIFACT_PATH.stat().st_mtime_ns) if ARTIFACT_PATH.is_file() else "missing"
+    path = _active_artifact_path()
+    model_version = str(path.stat().st_mtime_ns) if path.is_file() else "missing"
     content = pd.util.hash_pandas_object(frame, index=True).values.tobytes()
-    return hashlib.sha256(str(ARTIFACT_PATH).encode() + model_version.encode() + content).hexdigest()
+    return hashlib.sha256(str(path).encode() + model_version.encode() + content).hexdigest()
 
 
 def _validate_frame(frame: pd.DataFrame, artifact: dict) -> int:
@@ -213,7 +263,7 @@ def _single(artifact: dict) -> None:
     if "single_result" in st.session_state and st.session_state.get("single_result_signature") == signature:
         st.success("予測が完了しました。")
         _render_prediction(st.session_state["single_result"])
-        st.download_button("予測結果CSVをダウンロード", dataframe_to_csv_bytes(st.session_state["single_result"]), "ec3_single_prediction.csv", "text/csv", key="single_download")
+        st.download_button("予測結果CSVをダウンロード", dataframe_to_csv_bytes(st.session_state["single_result"]), _model_filename(artifact, "single_prediction"), "text/csv", key="single_download")
 
 
 def _batch(artifact: dict) -> None:
@@ -223,10 +273,12 @@ def _batch(artifact: dict) -> None:
     st.subheader("CSVによる一括予測")
     st.write("テンプレートの全入力列を含むCSVを選んでください。Name、CAS Numberなどの識別列と、行の並び順は結果に保持されます。")
     columns = _input_columns(artifact)
-    st.download_button("入力テンプレートCSVをダウンロード", dataframe_to_csv_bytes(pd.DataFrame(columns=columns)), "ec3_input_template.csv", "text/csv", key="input_template")
+    template_columns = list(dict.fromkeys(["No.", "Name", "CAS Number", *columns]))
+    st.download_button("入力テンプレートCSVをダウンロード", dataframe_to_csv_bytes(pd.DataFrame(columns=template_columns)), _model_filename(artifact, "input_template"), "text/csv", key="input_template")
     input_description = (f"説明変数{len(artifact['full_feature_columns'])}列＋換算専用MolWeight 1列（合計{len(columns)}列）"
                          if MW_COL not in artifact['full_feature_columns'] else f"前処理用の全{len(columns)}列（MolWeightを含む）")
-    st.caption(input_description + '。MolWeightは正の数を入力します。説明変数の欠損セルは学習済みKNNImputerで補完します。実測EC3の列は不要です。')
+    st.caption(input_description + '。テンプレートにはNo.・Name・CAS Numberの識別用3列を先頭に含めます。MolWeightは正の数を入力します。説明変数の欠損セルは学習済みKNNImputerで補完します。実測EC3の列は不要です。')
+    st.info('ここでは各Foldで予測し、最小EC3を採用します。元NotebookのDASS検証結果と比較する場合は「モデルの性能評価」の「交差検証（OOF）」を使ってください。学習物質をここに入力しても、学習から除外したFoldだけで予測する評価とは異なります。')
     with st.expander("CSVの形式と欠損値について"):
         st.write("1行につき1物質です。列名はテンプレートと完全に一致させてください。列の並び替えは可能です。すべての特徴量列が必要ですが、欠損セルは空欄にできます。MolWeightの欠損・0以下・無限大は使用できません。")
         if _is_notebook_workflow(artifact):
@@ -234,11 +286,13 @@ def _batch(artifact: dict) -> None:
         st.write("UTF-8 / CP932 / Shift-JIS、最大20 MB・10,000行。実測EC3は予測入力に使いません。アップロードしたデータと結果はセッションのメモリで扱います。")
     uploaded = st.file_uploader("予測用CSV", type=["csv"], key="batch_csv")
     if uploaded is None:
+        st.session_state.pop("batch_result", None)
         return
     try:
         frame = read_uploaded_csv(uploaded)
         missing_count = _validate_frame(frame, artifact)
     except (ValueError, KeyError, TypeError) as error:
+        st.session_state.pop("batch_result", None)
         st.error(str(error))
         return
     st.write(f"入力データ: {len(frame):,}行 × {len(frame.columns):,}列")
@@ -261,7 +315,7 @@ def _batch(artifact: dict) -> None:
     result = cached[1]
     st.success(f"{len(result):,}件の予測が完了しました。")
     st.dataframe(result, hide_index=True, width="stretch")
-    st.download_button("予測結果CSVをダウンロード", dataframe_to_csv_bytes(result), "ec3_batch_predictions.csv", "text/csv", key="batch_download")
+    st.download_button("予測結果CSVをダウンロード", dataframe_to_csv_bytes(result), _model_filename(artifact, "batch_predictions"), "text/csv", key="batch_download")
 
 
 def _batch_fixed21(artifact: dict) -> None:
@@ -271,7 +325,7 @@ def _batch_fixed21(artifact: dict) -> None:
     st.subheader('CSVによる一括予測')
     st.write('CSVはNo.・Name・CAS Numberの3列に続けて、指定21項目を並べた24列です。分子量はアップロード後に物質ごとに入力します。')
     st.download_button('入力テンプレートCSVをダウンロード',
-        dataframe_to_csv_bytes(make_template_frame()), 'ec3_input_template.csv', 'text/csv', key='input_template')
+        dataframe_to_csv_bytes(make_template_frame()), _model_filename(artifact, 'input_template'), 'text/csv', key='input_template')
     st.caption('CSVの説明変数は21項目だけです。MolWeightは説明変数ではなく、予測yをEC3へ換算する別入力です。')
     uploaded = st.file_uploader('予測用CSV', type=['csv'], key='batch_csv')
     if uploaded is None:
@@ -323,7 +377,7 @@ def _batch_fixed21(artifact: dict) -> None:
     st.success(f'{len(result):,}件の予測が完了しました。')
     st.dataframe(result, hide_index=True, width='stretch')
     st.download_button('予測結果CSVをダウンロード', dataframe_to_csv_bytes(result),
-        'ec3_batch_predictions.csv', 'text/csv', key='batch_download')
+        _model_filename(artifact, 'batch_predictions'), 'text/csv', key='batch_download')
 
 
 def _show_metrics(metrics: dict | None) -> None:
@@ -426,9 +480,15 @@ def _evaluation(artifact: dict) -> None:
     oof, train, external = st.tabs(["交差検証（OOF）", "学習データ（Fold内）", "外部検証"])
     with oof:
         st.write("各行が属するテストFoldの予測を使用します。学習に使った行への当てはめとは区別します。")
+        st.caption("元NotebookのDASS_predict_resultは、この検証用の予測方式です。CSV一括予測の最小EC3とは比較条件が異なります。保存したDASS学習データの行順で表示します。")
         _show_metrics(metrics.get(f"oof_{space}"))
         _scatter_report(reports.get("oof"), artifact, space)
         _notebook_evaluation_tables(reports.get("oof"))
+        oof_report = reports.get("oof")
+        if isinstance(oof_report, pd.DataFrame) and not oof_report.empty:
+            st.download_button("DASS検証予測（OOF）CSVをダウンロード",
+                               dataframe_to_csv_bytes(oof_report), _model_filename(artifact, "DASS_oof_predictions"),
+                               "text/csv", key="oof_download")
     with train:
         st.write("各Foldの学習部分への当てはめです。学習済みデータへの結果のため、未知データへの性能より良く見える可能性があります。")
         rows = metrics.get("train_folds", metrics.get("folds", []))
@@ -514,7 +574,8 @@ def _shap(artifact: dict) -> None:
     source = st.selectbox("説明するデータ", sources, key="shap_source")
     st.info("SHAPの出力単位は y = log10(MolWeight / EC3) です。正の寄与はyを増やし、同じ分子量ではEC3を小さくする方向です。EC3（%）への直接の加算値ではありません。")
     st.caption(f"選択モデル: {name}。図の特徴量値は、このFoldの前処理を適用したモデル入力値です。選択データの全行・全選択特徴量を使います。原本のSummaryはFold学習データが対象です。")
-    signature = (str(ARTIFACT_PATH), str(ARTIFACT_PATH.stat().st_mtime_ns), name, source)
+    path = _active_artifact_path()
+    signature = (str(path), str(path.stat().st_mtime_ns), name, source)
     if source == "直前に予測した入力データ":
         signature += (hashlib.sha256(pd.util.hash_pandas_object(st.session_state["latest_prediction_input"], index=True).values.tobytes()).hexdigest(),)
     if st.button("SHAPを計算・表示", type="primary", key="shap_compute"):
@@ -574,18 +635,22 @@ def _shap(artifact: dict) -> None:
         st.caption("基準値から、このFoldの予測yに至る特徴量ごとの寄与を示します。")
 
 
-def main() -> None:
+def main(*, artifact_path: Path | None = None) -> None:
     st.set_page_config(page_title="LLNA EC3 予測", page_icon="🧪", layout="wide", initial_sidebar_state="expanded")
     st.title("LLNA EC3 予測")
     st.caption("XGBoostによる皮膚感作性の推定と、モデルの検証・説明")
-    artifact, load_error = None, None
-    if ARTIFACT_PATH.is_file():
-        try:
-            artifact = _load_model(str(ARTIFACT_PATH), ARTIFACT_PATH.stat().st_mtime_ns)
-        except Exception as error:
-            load_error = error
     with st.sidebar:
         st.markdown("### EC3 研究アプリ")
+        profile, selected_path = _select_model(artifact_path)
+    _activate_model(selected_path)
+    artifact, load_error = None, None
+    if selected_path.is_file():
+        try:
+            artifact = _load_model(str(selected_path), selected_path.stat().st_mtime_ns)
+            validate_profile_artifact(profile, artifact)
+        except Exception as error:
+            artifact, load_error = None, error
+    with st.sidebar:
         page = st.radio("画面を選択", PAGES, key="navigation")
         st.divider()
         if artifact is not None:
@@ -595,6 +660,7 @@ def main() -> None:
         else:
             st.caption("モデル未準備")
     if artifact is not None:
+        st.caption(f"選択中: {MODEL_LABELS[profile]} / 前処理{len(artifact['full_feature_columns'])}項目 → 予測{len(_selected_features(artifact))}項目")
         mode = artifact.get("training_mode", artifact.get("metadata", {}).get("training_mode"))
         if mode == "smoke":
             st.warning("軽量動作確認モデルを使用中です。本番のNotebook再現学習を完了したモデルではありません。予測・性能・SHAPは動作確認用です。")

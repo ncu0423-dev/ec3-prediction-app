@@ -1,0 +1,165 @@
+{
+  "workflow": "dual_21_and_452_models",
+  "default_profile": "notebook452",
+  "weights_retrained": false,
+  "models": {
+    "fixed21": {
+      "deployment_path": "artifacts/original_model_artifact.joblib",
+      "sha256": "a6b18dfdcb806a55d63eaaa496da15110c974dc34e5fece9cf2fa407ce100cfb",
+      "unchanged_from_previous_deployment": true,
+      "full_preprocessing_columns": 21,
+      "selected_columns": 21,
+      "template_columns": 24,
+      "MolWeight_role": "screen_conversion_input"
+    },
+    "notebook452": {
+      "deployment_path": "artifacts/notebook_deployment_artifact.joblib",
+      "sha256": "d55336abfc15e963156cb4cee5a2dca40e53e383cf03ffb6eac53841d640bf30",
+      "source_sha256": "10893a1bcdaffcf402bdc0662e1761caf8603e8ae6e357578aa0450c7f67e56c",
+      "canonical_sha256": "0d1dc76ecb32cb3d6b3d00974a51bcf78161d7be323917d38179e679052bb4ad",
+      "full_preprocessing_columns": 452,
+      "selected_columns": 21,
+      "template_columns": 455,
+      "MolWeight_role": "preprocessing_and_inverse_conversion",
+      "ad_excluded_fraction": 0.2
+    }
+  },
+  "current_versions_equal_saved_versions": {
+    "numpy": "2.5.4",
+    "pandas": "3.0.6",
+    "scipy": "1.18.1",
+    "scikit-learn": "1.8.0",
+    "xgboost": "3.2.0",
+    "optuna": "5.0.0",
+    "Boruta": "0.4.3",
+    "shap": "0.54.1",
+    "joblib": "1.6.0"
+  },
+  "source_files_verified": {
+    "★XGBoost_model_refact_tokunaga.ipynb": "a338be400b5e85680a78222b9ef74c03b0c1fc9eba361a6bcf83a5cf20ea0f4c",
+    "DASS_join_data_opera_delete_LLNAnan.csv": "1d28f0cf2cb4260a95b38de2cdb94feec6676b91fce8e1270376091193398b1d",
+    "newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv": "f04eed95af213db8d4bd5c25e5e9c99f98966621b3b0bdf5ff41b9496ba17042"
+  },
+  "previous_full_cost_source_parity": {
+    "report_sha256": "42e8a2dda0bc7bc060b555a79edc4042b47f69f3f6da9b9b11738d76e481db56",
+    "scope": "full_notebook_source_parity",
+    "checks": 112,
+    "status": "passed",
+    "max_absolute_difference": 0,
+    "reused_evidence_not_retrained_in_this_change": true
+  },
+  "fold_pipeline_model_and_OOF_checks": [
+    {
+      "fold": "fold_1",
+      "trials": 1000,
+      "KNN_fit_shape": [
+        123,
+        452
+      ],
+      "pipeline_hash": "824845eb822f92ac83723cb4cdcaa520",
+      "booster_sha256": "6355c7ee349f6bc7a252b18c936370cf5778293b1a4620c61fbee9ae271ffc2b",
+      "canonical_source_export_weights_equal": true,
+      "OOF_y_EC3_equal": true
+    },
+    {
+      "fold": "fold_2",
+      "trials": 1000,
+      "KNN_fit_shape": [
+        123,
+        452
+      ],
+      "pipeline_hash": "25a876fc6fd96843cc750365c2d6dff8",
+      "booster_sha256": "c2b57eba37903a3d87c4b171ab2836c0b7677ef2517c5cfbc6f5e1112844f0cd",
+      "canonical_source_export_weights_equal": true,
+      "OOF_y_EC3_equal": true
+    },
+    {
+      "fold": "fold_3",
+      "trials": 1000,
+      "KNN_fit_shape": [
+        123,
+        452
+      ],
+      "pipeline_hash": "946a7bd18464553a45ecabe6f529a9c4",
+      "booster_sha256": "92c2b0e5f1d3d596f60e7ff913e62e553b7746369e301a43c5151b4e62afdffd",
+      "canonical_source_export_weights_equal": true,
+      "OOF_y_EC3_equal": true
+    },
+    {
+      "fold": "fold_4",
+      "trials": 1000,
+      "KNN_fit_shape": [
+        123,
+        452
+      ],
+      "pipeline_hash": "3935ccd68d539aa6a18bc0e9315f175b",
+      "booster_sha256": "54d825dea2012397c179e22ae329d47f241f6ad1e07628855125c62664784881",
+      "canonical_source_export_weights_equal": true,
+      "OOF_y_EC3_equal": true
+    },
+    {
+      "fold": "fold_5",
+      "trials": 1000,
+      "KNN_fit_shape": [
+        124,
+        452
+      ],
+      "pipeline_hash": "2c9b6dd7fdaa97d0077c0e90825f4825",
+      "booster_sha256": "179cf68baa209a6da5f7891025954d56bbff6fdc21e0cb839a1bfad0c506dbd9",
+      "canonical_source_export_weights_equal": true,
+      "OOF_y_EC3_equal": true
+    }
+  ],
+  "deployment_new_input_parity": {
+    "DASS_new_input": {
+      "rows": 154,
+      "all_output_columns_equal": true,
+      "max_absolute_difference": 0
+    },
+    "external_new_input": {
+      "rows": 72,
+      "all_output_columns_equal": true,
+      "max_absolute_difference": 0
+    }
+  },
+  "report_numerics_and_row_order_preserved": true,
+  "report_identifiers_removed": true,
+  "AD_source_parity": {
+    "scope": "original_class_AD_branches_from_saved_model",
+    "checks": 54,
+    "status": "passed",
+    "max_absolute_difference": 0.0,
+    "training_executed": false,
+    "report_sha256": "dfa9e8f0d841f0eca6ef28b4c1871a5333295fdb941bc9d75ef35051b5ebff0b"
+  },
+  "tests": {
+    "full_suite": {
+      "command": "python -m pytest -q",
+      "passed": 143,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 38.28
+    },
+    "clean_checkout_without_private_sources": {
+      "scope": "both models, mode switching, templates, predictions, OOF download and Notebook UI",
+      "passed": 15,
+      "failed": 0,
+      "skipped": 0,
+      "seconds": 7.95
+    },
+    "streamlit_server_health": {
+      "http_status": 200,
+      "body": "ok"
+    }
+  },
+  "historical_DASS_csv_exact_match_verified": false,
+  "limitations": [
+    "The saved model that generated the historical DASS CSV and its original library environment have not been provided.",
+    "Missing hCLAT.Call source files prevent complete in vitro or combined AD reproduction.",
+    "452-source parity evidence does not apply to the independent fixed21 model."
+  ],
+  "missing_sources": [
+    "Annex-2-in-vitro-in-silico-in-vivo-defined-approaches.csv",
+    "newCE_data.csv"
+  ]
+}

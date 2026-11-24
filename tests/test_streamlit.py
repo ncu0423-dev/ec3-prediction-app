@@ -117,7 +117,7 @@ def capture_download(*args, **kwargs):
 with patch.object(ui.st, "file_uploader", return_value=BytesIO(st.session_state["_test_uploaded_csv"])), \
      patch.object(ui.st, "data_editor", side_effect=edit_conversion_values), \
      patch.object(ui.st, "download_button", side_effect=capture_download):
-    ui.main()
+    ui.main(artifact_path=Path(st.session_state['_test_artifact_path']))
 """
 
 

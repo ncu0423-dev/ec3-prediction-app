@@ -5,8 +5,9 @@
 reference_private/
 data/newCE_join_data_opera_delete_LLNAnan_duplicate_plus_manual.csv
 artifacts/*
-# Only the reviewed Community Cloud deployment artifact is distributed.
+# Only the two reviewed Community Cloud deployment artifacts are distributed.
 !artifacts/original_model_artifact.joblib
+!artifacts/notebook_deployment_artifact.joblib
 outputs/
 validation_runs/
 

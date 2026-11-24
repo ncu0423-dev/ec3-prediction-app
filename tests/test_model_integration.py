@@ -87,7 +87,11 @@ def test_external_report_can_be_reproduced_from_original_csv(trained_artifact, r
         assert result.Name.tolist() == saved.Name.tolist()
         np.testing.assert_array_equal(external["source_rows"], saved.source_row)
     for name in ["Predict_LLNA EC3", "pred_y", "kNN_AD", "any_kNN_AD", "selected_fold"]:
-        pd.testing.assert_series_equal(result[name], saved[name])
+        actual, expected = result[name], saved[name]
+        if name == "selected_fold":
+            # Older artifacts used NaN-backed strings; normalize only fold-label null storage.
+            actual, expected = actual.astype("string"), expected.astype("string")
+        pd.testing.assert_series_equal(actual, expected, check_exact=True)
     assert result.attrs["metrics"]["ec3"]["n"] == len(result)
 
 
